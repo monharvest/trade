@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>USDT/MNT Price Alert - Trade.mn</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .price-up { color: #22c55e; }
+        .price-down { color: #ef4444; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <!-- Header -->
+    <header class="bg-gray-800 border-b border-gray-700">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" class="w-10 h-10 bg-gradient-to-br from-green-400 to-blue-500 rounded-lg flex items-center justify-center font-bold hover:scale-105 transition">
+                    T
+                </a>
+                <div>
+                    <h1 class="font-bold text-lg">Trade.mn Price Alert</h1>
+                    <p class="text-gray-400 text-sm">
+                        <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" class="hover:text-blue-400 transition">
+                            USDT/MNT Monitoring →
+                        </a>
+                    </p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" 
+                   class="hidden sm:flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                    </svg>
+                    Open Trade.mn
+                </a>
+                <div id="connectionStatus" class="flex items-center gap-2 text-sm">
+                    <span class="w-2 h-2 bg-yellow-500 rounded-full pulse"></span>
+                    <span class="text-gray-400">Connecting...</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-8">
+        <!-- Price Display -->
+        <div class="bg-gray-800 rounded-2xl p-8 mb-8 border border-gray-700">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                <div>
+                    <div class="flex items-center gap-2 mb-1">
+                        <p class="text-gray-400 text-sm">Current USDT/MNT Price</p>
+                        <span class="text-xs bg-blue-600/30 text-blue-400 px-2 py-0.5 rounded">Trade.mn</span>
+                    </div>
+                    <div class="flex items-baseline gap-3">
+                        <span id="currentPrice" class="text-5xl font-bold">--</span>
+                        <span class="text-gray-400 text-xl">MNT</span>
+                    </div>
+                    <div class="flex items-center gap-4 mt-3">
+                        <span id="priceChange" class="text-lg font-medium">--</span>
+                        <span id="lastUpdate" class="text-gray-500 text-sm">Last update: --</span>
+                    </div>
+                </div>
+                <div class="flex flex-col gap-2 text-right">
+                    <div class="bg-gray-700/50 rounded-lg px-4 py-2">
+                        <p class="text-gray-400 text-xs">24h High</p>
+                        <p id="highPrice" class="text-green-400 font-semibold">--</p>
+                    </div>
+                    <div class="bg-gray-700/50 rounded-lg px-4 py-2">
+                        <p class="text-gray-400 text-xs">24h Low</p>
+                        <p id="lowPrice" class="text-red-400 font-semibold">--</p>
+                    </div>
+                    <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" 
+                       class="text-blue-400 hover:text-blue-300 text-xs flex items-center justify-end gap-1 mt-1">
+                        View on Trade.mn
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden inputs for notifications -->
+        <input type="hidden" id="emailAddress" value="">
+        <input type="hidden" id="telegramChatId" value="1231509877">
+
+        <div class="grid md:grid-cols-2 gap-8">
+            <!-- Set Alert -->
+            <div class="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+                <h2 class="text-xl font-bold mb-6 flex items-center gap-2">
+                    <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+                    </svg>
+                    Set Price Alert
+                </h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2">Alert Type</label>
+                        <div class="flex gap-2">
+                            <button id="btnAbove" onclick="setAlertType('above')" class="flex-1 py-3 px-4 rounded-lg border-2 border-green-500 bg-green-500/20 text-green-400 font-medium transition">
+                                Price Above ↑
+                            </button>
+                            <button id="btnBelow" onclick="setAlertType('below')" class="flex-1 py-3 px-4 rounded-lg border-2 border-gray-600 text-gray-400 font-medium transition hover:border-gray-500">
+                                Price Below ↓
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2">Target Price (MNT)</label>
+                        <input type="number" id="targetPrice" placeholder="e.g., 3500" 
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-lg focus:outline-none focus:border-blue-500 transition">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-2">Check Interval</label>
+                        <select id="checkInterval" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500">
+                            <option value="10000">Every 10 seconds</option>
+                            <option value="30000" selected>Every 30 seconds</option>
+                            <option value="60000">Every 1 minute</option>
+                            <option value="300000">Every 5 minutes</option>
+                        </select>
+                    </div>
+                    
+                    <button onclick="createAlert()" class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 py-3 rounded-lg font-semibold transition transform hover:scale-[1.02]">
+                        Create Alert
+                    </button>
+                </div>
+            </div>
+
+            <!-- Active Alerts -->
+            <div class="bg-gray-800 rounded-2xl p-6 border border-gray-700">
+                <h2 class="text-xl font-bold mb-6 flex items-center gap-2">
+                    <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                    </svg>
+                    Active Alerts
+                </h2>
+                
+                <div id="alertsList" class="space-y-3">
+                    <div class="text-gray-500 text-center py-8">
+                        <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                        </svg>
+                        <p>No active alerts</p>
+                        <p class="text-sm">Create your first alert above</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Price History -->
+        <div class="bg-gray-800 rounded-2xl p-6 border border-gray-700 mt-8">
+            <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                <svg class="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
+                </svg>
+                Recent Price Updates
+            </h2>
+            <div id="priceHistory" class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-gray-400 border-b border-gray-700">
+                            <th class="text-left py-3">Time</th>
+                            <th class="text-right py-3">Price (MNT)</th>
+                            <th class="text-right py-3">Change</th>
+                        </tr>
+                    </thead>
+                    <tbody id="priceHistoryBody">
+                        <tr><td colspan="3" class="py-8 text-center text-gray-500">Waiting for data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Manual Price Input (Fallback) -->
+        <div id="manualPriceSection" class="bg-yellow-900/30 border border-yellow-700 rounded-2xl p-6 mt-8 hidden">
+            <h3 class="text-yellow-400 font-bold mb-3 flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                Demo Mode Active
+            </h3>
+            <p class="text-gray-300 text-sm mb-4">
+                Due to browser security (CORS), we can't directly access Trade.mn's API. 
+                You can manually enter the current price from 
+                <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" class="text-blue-400 hover:underline">Trade.mn Exchange</a>
+                or the demo will simulate realistic price movements.
+            </p>
+            <div class="flex gap-3">
+                <input type="number" id="manualPriceInput" placeholder="Enter current USDT/MNT price" 
+                    class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-yellow-500">
+                <button onclick="setManualPrice()" class="bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-lg font-medium transition">
+                    Update Price
+                </button>
+            </div>
+        </div>
+
+        <!-- API Info -->
+        <div class="bg-gray-800/50 rounded-xl p-4 mt-8 border border-gray-700">
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 text-sm">
+                <p class="text-gray-400">
+                    📡 Monitoring <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" class="text-blue-400 hover:underline">Trade.mn USDT/MNT</a>
+                </p>
+                <span class="hidden sm:inline text-gray-600">•</span>
+                <a href="https://docs.trade.mn" target="_blank" class="text-blue-400 hover:underline">API Documentation</a>
+                <span class="hidden sm:inline text-gray-600">•</span>
+                <p class="text-gray-400">Auto-refresh enabled</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-4 rounded-xl shadow-2xl transform translate-y-20 opacity-0 transition-all duration-300 z-50">
+        <div class="flex items-center gap-3">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span id="toastMessage">Alert triggered!</span>
+        </div>
+    </div>
+
+    <!-- Alert Sound -->
+    <audio id="alertSound" preload="auto">
+        <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQkhbsrl4aFGBBJqz/LfsU8IFYbO9N2oRQMRldD03ahFAxGV0PTdqEUDEZXQ9N2oRQMRldD03ahFAxGV0PTdqEUDEQ==" type="audio/wav">
+    </audio>
+
+    <!-- Socket.io for real-time data -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <script>
+        // Telegram Bot Configuration
+        const TELEGRAM_BOT_TOKEN = '8493627426:AAG2V8rw8qp6tDouUJgJGRZ4I44M6U6hXk0';
+        const TELEGRAM_CHAT_ID = '1231509877';
+        
+        // State
+        let alertType = 'above';
+        let alerts = [];
+        let priceHistory = [];
+        let lastPrice = null;
+        let checkTimer = null;
+        let isMonitoring = false;
+        let socket = null;
+
+        // Trade.mn API Configuration
+        // Based on official docs.trade.mn API documentation
+        // API Base URL: https://trade.mn/api
+        // WebSocket URL: https://trade.mn:8989 (Socket.io auto-detects ws/wss)
+        
+        const API_BASE_URL = 'https://trade.mn/api';
+        const WS_URL = 'https://trade.mn:8989';
+        const TRADING_PAIR = 'USDT/MNT';
+        
+        // Try different API endpoint patterns
+        const API_ENDPOINTS = [
+            { 
+                url: `${API_BASE_URL}/depth?symbol=${TRADING_PAIR}`, 
+                parser: (d) => {
+                    // Calculate mid price from orderbook
+                    if (d && d.buy && d.sell) {
+                        const bestBid = Math.max(...Object.keys(d.buy).map(Number));
+                        const bestAsk = Math.min(...Object.keys(d.sell).map(Number));
+                        return { price: (bestBid + bestAsk) / 2 };
+                    }
+                    return null;
+                }
+            },
+            { 
+                url: `${API_BASE_URL}/trades?symbol=${TRADING_PAIR}&limit=1`, 
+                parser: (d) => {
+                    if (Array.isArray(d) && d.length > 0) {
+                        return { price: d[0].price };
+                    }
+                    return null;
+                }
+            },
+        ];
+
+        // For demo/fallback - simulate price when API is not accessible
+        let useDemoMode = false;
+        let demoBasePrice = 3693.00; // Current USDT/MNT rate from Trade.mn exchange
+
+        function setAlertType(type) {
+            alertType = type;
+            const btnAbove = document.getElementById('btnAbove');
+            const btnBelow = document.getElementById('btnBelow');
+            
+            if (type === 'above') {
+                btnAbove.className = 'flex-1 py-3 px-4 rounded-lg border-2 border-green-500 bg-green-500/20 text-green-400 font-medium transition';
+                btnBelow.className = 'flex-1 py-3 px-4 rounded-lg border-2 border-gray-600 text-gray-400 font-medium transition hover:border-gray-500';
+            } else {
+                btnBelow.className = 'flex-1 py-3 px-4 rounded-lg border-2 border-red-500 bg-red-500/20 text-red-400 font-medium transition';
+                btnAbove.className = 'flex-1 py-3 px-4 rounded-lg border-2 border-gray-600 text-gray-400 font-medium transition hover:border-gray-500';
+            }
+        }
+
+        function createAlert() {
+            const targetPrice = parseFloat(document.getElementById('targetPrice').value);
+            if (!targetPrice || targetPrice <= 0) {
+                showToast('Please enter a valid target price', 'error');
+                return;
+            }
+
+            const alert = {
+                id: Date.now(),
+                type: alertType,
+                target: targetPrice,
+                created: new Date().toISOString(),
+                triggered: false
+            };
+
+            alerts.push(alert);
+            saveAlerts(); // Save to localStorage
+            renderAlerts();
+            document.getElementById('targetPrice').value = '';
+            showToast(`Alert created: ${alertType === 'above' ? '↑' : '↓'} ${targetPrice.toLocaleString()} MNT`);
+            
+            // Start monitoring if not already
+            if (!isMonitoring) {
+                startMonitoring();
+            }
+        }
+
+        function removeAlert(id) {
+            alerts = alerts.filter(a => a.id !== id);
+            saveAlerts(); // Save to localStorage
+            renderAlerts();
+        }
+        
+        function saveAlerts() {
+            localStorage.setItem('priceAlerts', JSON.stringify(alerts));
+            console.log('💾 Alerts saved to localStorage');
+        }
+        
+        function loadAlerts() {
+            const savedAlerts = localStorage.getItem('priceAlerts');
+            if (savedAlerts) {
+                try {
+                    alerts = JSON.parse(savedAlerts);
+                    // Convert date strings back to Date objects
+                    alerts.forEach(alert => {
+                        alert.created = new Date(alert.created);
+                    });
+                    console.log('📂 Loaded', alerts.length, 'alerts from storage');
+                    renderAlerts();
+                    
+                    // Start monitoring if there are alerts
+                    if (alerts.length > 0 && !isMonitoring) {
+                        startMonitoring();
+                    }
+                } catch (e) {
+                    console.error('❌ Failed to load alerts:', e);
+                }
+            }
+        }
+
+        function renderAlerts() {
+            const container = document.getElementById('alertsList');
+            
+            if (alerts.length === 0) {
+                container.innerHTML = `
+                    <div class="text-gray-500 text-center py-8">
+                        <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                        </svg>
+                        <p>No active alerts</p>
+                        <p class="text-sm">Create your first alert above</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = alerts.map(alert => `
+                <div class="bg-gray-700/50 rounded-lg p-4 flex items-center justify-between ${alert.triggered ? 'border-2 border-yellow-500' : ''}">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center ${alert.type === 'above' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">
+                            ${alert.type === 'above' ? '↑' : '↓'}
+                        </div>
+                        <div>
+                            <p class="font-semibold">${alert.target.toLocaleString()} MNT</p>
+                            <p class="text-gray-400 text-sm">Alert when price goes ${alert.type}</p>
+                        </div>
+                    </div>
+                    <button onclick="removeAlert(${alert.id})" class="text-gray-400 hover:text-red-400 transition p-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        async function fetchPrice() {
+            // Try to connect via WebSocket/Socket.io first (most reliable)
+            if (!socket && typeof io !== 'undefined') {
+                trySocketConnection();
+            }
+
+            // If we already have socket connection, wait for data
+            if (socket && socket.connected) {
+                console.log('⏳ Waiting for WebSocket data...');
+                // Return last known price or demo price while waiting
+                if (lastPrice) {
+                    return {
+                        price: lastPrice,
+                        high: lastPrice + 50,
+                        low: lastPrice - 50
+                    };
+                }
+            }
+
+            // Fall back to demo mode with realistic price simulation
+            // Based on current USDT/MNT rate around 3,693 MNT (from exchange page)
+            useDemoMode = true;
+            const variation = (Math.random() - 0.5) * 10;
+            demoBasePrice = Math.max(3650, Math.min(3750, demoBasePrice + variation));
+            
+            return {
+                price: Math.round(demoBasePrice * 100) / 100,
+                high: Math.round((demoBasePrice + 25 + Math.random() * 15) * 100) / 100,
+                low: Math.round((demoBasePrice - 25 - Math.random() * 15) * 100) / 100
+            };
+        }
+
+        function trySocketConnection() {
+            // Connect to Trade.mn official WebSocket endpoint
+            // Based on docs: https://trade.mn:8989
+            try {
+                console.log('🔌 Attempting WebSocket connection to:', WS_URL);
+                console.log('📍 Trading pair:', TRADING_PAIR);
+                
+                socket = io(WS_URL, {
+                    transports: ['polling', 'websocket'],
+                    upgrade: true,
+                    timeout: 10000,
+                    reconnection: true,
+                    reconnectionDelay: 2000,
+                    reconnectionDelayMax: 10000,
+                    reconnectionAttempts: 10,
+                    forceNew: true
+                });
+
+                socket.on('connect', () => {
+                    console.log('✅ WebSocket connected to Trade.mn');
+                    console.log('🆔 Socket ID:', socket.id);
+                    console.log('🚀 Transport:', socket.io.engine.transport.name);
+                    
+                    useDemoMode = false;
+                    updateConnectionStatus(true, false);
+                    
+                    // Join USDT/MNT room according to Trade.mn API docs
+                    // Format: ["join", "USDT/MNT"]
+                    console.log(`📡 Sending join message for ${TRADING_PAIR}...`);
+                    socket.emit('message', ['join', TRADING_PAIR]);
+                    
+                    // Also try alternative join formats
+                    setTimeout(() => {
+                        socket.emit('join', TRADING_PAIR);
+                        console.log(`📡 Sent alternative join for ${TRADING_PAIR}`);
+                    }, 500);
+                });
+
+                // Listen for all message types
+                socket.on('message', (data) => {
+                    console.log('📨 Received message:', data);
+                    if (Array.isArray(data)) {
+                        const [event, payload] = data;
+                        
+                        switch(event) {
+                            case 'matched_order':
+                                // Real-time trade execution
+                                if (payload && payload.price) {
+                                    handleRealtimePrice({ price: payload.price });
+                                    console.log('💹 Trade matched:', payload.price, 'MNT');
+                                }
+                                break;
+                                
+                            case 'trades':
+                                // Recent trades list
+                                if (Array.isArray(payload) && payload.length > 0) {
+                                    handleRealtimePrice({ price: payload[0].price });
+                                    console.log('📊 Latest trade:', payload[0].price, 'MNT');
+                                }
+                                break;
+                                
+                            case 'orders':
+                                // Order book update - calculate mid price
+                                if (payload && payload.buy && payload.sell) {
+                                    const buyPrices = Object.keys(payload.buy).map(Number);
+                                    const sellPrices = Object.keys(payload.sell).map(Number);
+                                    if (buyPrices.length > 0 && sellPrices.length > 0) {
+                                        const bestBid = Math.max(...buyPrices);
+                                        const bestAsk = Math.min(...sellPrices);
+                                        const midPrice = (bestBid + bestAsk) / 2;
+                                        handleRealtimePrice({ price: midPrice });
+                                        console.log('📈 Order book mid price:', midPrice, 'MNT (bid:', bestBid, 'ask:', bestAsk + ')');
+                                    }
+                                }
+                                break;
+                                
+                            case 'buy_order_update':
+                            case 'sell_order_update':
+                                // Order updates - log but don't update price yet
+                                console.log('📋 Order update:', event, payload);
+                                break;
+                                
+                            default:
+                                console.log('📦 Unknown event:', event, payload);
+                        }
+                    }
+                });
+                
+                // Also listen for individual events (alternative format)
+                socket.on('matched_order', (data) => {
+                    console.log('💹 Direct matched_order:', data);
+                    if (data && data.price) {
+                        handleRealtimePrice({ price: data.price });
+                    }
+                });
+                
+                socket.on('trades', (data) => {
+                    console.log('📊 Direct trades:', data);
+                    if (Array.isArray(data) && data.length > 0 && data[0].price) {
+                        handleRealtimePrice({ price: data[0].price });
+                    }
+                });
+                
+                socket.on('orders', (data) => {
+                    console.log('📈 Direct orders:', data);
+                    if (data && data.buy && data.sell) {
+                        const buyPrices = Object.keys(data.buy).map(Number);
+                        const sellPrices = Object.keys(data.sell).map(Number);
+                        if (buyPrices.length > 0 && sellPrices.length > 0) {
+                            const bestBid = Math.max(...buyPrices);
+                            const bestAsk = Math.min(...sellPrices);
+                            const midPrice = (bestBid + bestAsk) / 2;
+                            handleRealtimePrice({ price: midPrice });
+                        }
+                    }
+                });
+
+                socket.on('disconnect', (reason) => {
+                    console.log('❌ WebSocket disconnected:', reason);
+                    updateConnectionStatus(true, true);
+                });
+
+                socket.on('connect_error', (err) => {
+                    console.log('⚠️ WebSocket connection error:', err.message);
+                    console.log('⚠️ Error details:', err);
+                });
+
+                socket.on('error', (err) => {
+                    console.log('⚠️ WebSocket error:', err);
+                });
+                
+                socket.on('reconnect', (attemptNumber) => {
+                    console.log('🔄 Reconnected after', attemptNumber, 'attempts');
+                    socket.emit('message', ['join', TRADING_PAIR]);
+                });
+                
+                socket.on('reconnect_attempt', () => {
+                    console.log('🔄 Attempting to reconnect...');
+                });
+                
+                socket.on('reconnect_error', (err) => {
+                    console.log('⚠️ Reconnection error:', err.message);
+                });
+                
+                socket.on('reconnect_failed', () => {
+                    console.log('❌ Reconnection failed after all attempts');
+                    useDemoMode = true;
+                    updateConnectionStatus(true, true);
+                });
+                
+                // Listen for any event to debug
+                socket.onAny((event, ...args) => {
+                    console.log('📩 Received event:', event, 'with data:', args);
+                });
+
+            } catch (e) {
+                console.log('❌ Socket.io connection failed:', e);
+            }
+        }
+
+        function handleRealtimePrice(data) {
+            const price = parseFloat(data.price || data.last || data.lastPrice);
+            
+            if (!price || price <= 0 || isNaN(price)) {
+                return;
+            }
+            
+            const priceData = {
+                price: price,
+                high: parseFloat(data.high || data.highPrice || 0),
+                low: parseFloat(data.low || data.lowPrice || 0)
+            };
+            
+            useDemoMode = false;
+            updatePriceDisplay(priceData);
+            updateConnectionStatus(true, false);
+        }
+
+        function updatePriceDisplay(data) {
+            const priceEl = document.getElementById('currentPrice');
+            const changeEl = document.getElementById('priceChange');
+            const lastUpdateEl = document.getElementById('lastUpdate');
+            const highEl = document.getElementById('highPrice');
+            const lowEl = document.getElementById('lowPrice');
+
+            const newPrice = data.price;
+            priceEl.textContent = newPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            
+            if (lastPrice !== null) {
+                const change = newPrice - lastPrice;
+                const changePercent = (change / lastPrice) * 100;
+                const isUp = change >= 0;
+                
+                changeEl.innerHTML = `
+                    <span class="${isUp ? 'price-up' : 'price-down'}">
+                        ${isUp ? '▲' : '▼'} ${Math.abs(change).toFixed(2)} (${Math.abs(changePercent).toFixed(3)}%)
+                    </span>
+                `;
+                priceEl.className = `text-5xl font-bold ${isUp ? 'price-up' : 'price-down'}`;
+                
+                // Reset color after animation
+                setTimeout(() => {
+                    priceEl.className = 'text-5xl font-bold';
+                }, 1000);
+            }
+
+            lastPrice = newPrice;
+            lastUpdateEl.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
+            
+            if (data.high) highEl.textContent = data.high.toLocaleString('en-US', { minimumFractionDigits: 2 });
+            if (data.low) lowEl.textContent = data.low.toLocaleString('en-US', { minimumFractionDigits: 2 });
+
+            // Add to history
+            addToHistory(newPrice);
+            
+            // Check alerts
+            checkAlerts(newPrice);
+        }
+
+        function addToHistory(price) {
+            const now = new Date();
+            priceHistory.unshift({
+                time: now,
+                price: price,
+                change: lastPrice ? price - lastPrice : 0
+            });
+
+            // Keep only last 20 entries
+            priceHistory = priceHistory.slice(0, 20);
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const tbody = document.getElementById('priceHistoryBody');
+            
+            if (priceHistory.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" class="py-8 text-center text-gray-500">Waiting for data...</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = priceHistory.map((entry, i) => `
+                <tr class="border-b border-gray-700/50 hover:bg-gray-700/30">
+                    <td class="py-2 text-gray-400">${entry.time.toLocaleTimeString()}</td>
+                    <td class="py-2 text-right font-mono">${entry.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td class="py-2 text-right ${entry.change >= 0 ? 'price-up' : 'price-down'}">
+                        ${i < priceHistory.length - 1 ? (entry.change >= 0 ? '+' : '') + entry.change.toFixed(2) : '-'}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function checkAlerts(currentPrice) {
+            let alertsTriggered = false;
+            
+            alerts.forEach(alert => {
+                if (alert.triggered) return;
+                
+                let triggered = false;
+                if (alert.type === 'above' && currentPrice >= alert.target) {
+                    triggered = true;
+                } else if (alert.type === 'below' && currentPrice <= alert.target) {
+                    triggered = true;
+                }
+
+                if (triggered) {
+                    alert.triggered = true;
+                    alertsTriggered = true;
+                    triggerAlert(alert, currentPrice);
+                }
+            });
+            
+            if (alertsTriggered) {
+                // Remove all triggered alerts
+                alerts = alerts.filter(a => !a.triggered);
+                saveAlerts(); // Save updated list
+                renderAlerts();
+                console.log('🗑️ Triggered alerts removed automatically');
+            }
+        }
+
+        async function triggerAlert(alert, currentPrice) {
+            // Play sound
+            const sound = document.getElementById('alertSound');
+            sound.play().catch(() => {});
+
+            const message = `🚨 ALERT! USDT/MNT is now ${currentPrice.toLocaleString()} MNT (${alert.type} ${alert.target.toLocaleString()})`;
+            
+            // Show notification
+            showToast(message, 'alert');
+
+            // Browser notification
+            if (Notification.permission === 'granted') {
+                new Notification('Trade.mn Price Alert', {
+                    body: `USDT/MNT: ${currentPrice.toLocaleString()} MNT\nTarget: ${alert.type} ${alert.target.toLocaleString()} MNT`,
+                    icon: '💰'
+                });
+            }
+            
+            // Send Telegram notification
+            await sendTelegramNotification(TELEGRAM_CHAT_ID, alert, currentPrice);
+        }
+        
+        async function sendTelegramNotification(chatId, alert, currentPrice) {
+            if (TELEGRAM_BOT_TOKEN === 'YOUR_BOT_TOKEN') {
+                console.log('⚠️ Telegram bot not configured. Please set up bot token.');
+                return;
+            }
+            
+            try {
+                const message = `🚨 *Trade.mn Price Alert*\n\n` +
+                    `💱 Pair: USDT/MNT\n` +
+                    `💰 Current Price: ${currentPrice.toLocaleString()} MNT\n` +
+                    `🎯 Target: ${alert.type.toUpperCase()} ${alert.target.toLocaleString()} MNT\n` +
+                    `⏰ Time: ${new Date().toLocaleString()}\n\n` +
+                    `[View on Trade.mn](https://trade.mn/exchange/USDT/MNT/)`;
+                
+                const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: chatId,
+                        text: message,
+                        parse_mode: 'Markdown',
+                        disable_web_page_preview: false
+                    })
+                });
+                
+                if (response.ok) {
+                    console.log('✅ Telegram notification sent to:', chatId);
+                    showToast('📱 Telegram notification sent!', 'success');
+                } else {
+                    const error = await response.json();
+                    console.error('❌ Telegram API error:', error);
+                    showToast('❌ Failed to send Telegram notification', 'error');
+                }
+            } catch (error) {
+                console.error('❌ Failed to send Telegram notification:', error);
+                showToast('❌ Failed to send Telegram notification', 'error');
+            }
+        }
+        
+
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            
+            toast.className = `fixed bottom-4 right-4 text-white px-6 py-4 rounded-xl shadow-2xl transform transition-all duration-300 z-50 ${
+                type === 'error' ? 'bg-red-600' : type === 'alert' ? 'bg-yellow-600' : 'bg-green-600'
+            }`;
+            toastMessage.textContent = message;
+            
+            toast.style.transform = 'translateY(0)';
+            toast.style.opacity = '1';
+
+            setTimeout(() => {
+                toast.style.transform = 'translateY(20px)';
+                toast.style.opacity = '0';
+            }, 4000);
+        }
+
+        function updateConnectionStatus(connected, isDemo = false) {
+            const status = document.getElementById('connectionStatus');
+            const manualSection = document.getElementById('manualPriceSection');
+            
+            if (connected) {
+                status.innerHTML = `
+                    <span class="w-2 h-2 ${isDemo ? 'bg-yellow-500' : 'bg-green-500'} rounded-full ${isDemo ? '' : 'animate-pulse'}"></span>
+                    <span class="text-gray-400">${isDemo ? 'Demo Mode' : 'Live • Trade.mn'}</span>
+                `;
+                
+                // Show manual input section in demo mode
+                if (isDemo && manualSection) {
+                    manualSection.classList.remove('hidden');
+                } else if (manualSection) {
+                    manualSection.classList.add('hidden');
+                }
+            } else {
+                status.innerHTML = `
+                    <span class="w-2 h-2 bg-red-500 rounded-full"></span>
+                    <span class="text-gray-400">Disconnected</span>
+                `;
+            }
+        }
+
+        function setManualPrice() {
+            const input = document.getElementById('manualPriceInput');
+            const price = parseFloat(input.value);
+            
+            if (!price || price <= 0) {
+                showToast('Please enter a valid price', 'error');
+                return;
+            }
+            
+            // Update the demo base price
+            demoBasePrice = price;
+            
+            // Update display
+            updatePriceDisplay({
+                price: price,
+                high: price + 20,
+                low: price - 20
+            });
+            
+            input.value = '';
+            showToast(`Price updated to ${price.toLocaleString()} MNT`);
+        }
+
+        async function startMonitoring() {
+            isMonitoring = true;
+            const interval = parseInt(document.getElementById('checkInterval').value);
+            
+            console.log('🎬 Starting price monitoring...');
+            console.log('⏱️ Refresh interval:', interval / 1000, 'seconds');
+            
+            // Initial fetch
+            try {
+                const data = await fetchPrice();
+                updatePriceDisplay(data);
+                updateConnectionStatus(true, useDemoMode);
+            } catch (e) {
+                console.error('❌ Error fetching price:', e);
+                updateConnectionStatus(false);
+            }
+
+            // Set up interval
+            if (checkTimer) clearInterval(checkTimer);
+            checkTimer = setInterval(async () => {
+                try {
+                    const data = await fetchPrice();
+                    updatePriceDisplay(data);
+                    updateConnectionStatus(true, useDemoMode);
+                } catch (e) {
+                    console.error('❌ Error fetching price:', e);
+                }
+            }, interval);
+        }
+
+        // Request notification permission
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
+        // Start on load
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🚀 Trade.mn Price Monitor Starting...');
+            console.log('📍 API Base:', API_BASE_URL);
+            console.log('🔌 WebSocket URL:', WS_URL);
+            console.log('💱 Trading Pair:', TRADING_PAIR);
+            console.log('📱 Telegram notifications enabled');
+            
+            // Load saved alerts
+            loadAlerts();
+            
+            startMonitoring();
+            
+            // Update interval when changed
+            document.getElementById('checkInterval').addEventListener('change', () => {
+                if (isMonitoring) {
+                    console.log('⏱️ Restarting with new interval');
+                    startMonitoring();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
