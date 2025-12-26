@@ -243,9 +243,9 @@
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
     <script>
-        // Telegram Bot Configuration
-        const TELEGRAM_BOT_TOKEN = '8493627426:AAG2V8rw8qp6tDouUJgJGRZ4I44M6U6hXk0';
-        const TELEGRAM_CHAT_ID = '1231509877';
+        // Backend API Configuration
+        // The backend server handles Telegram notifications securely
+        const BACKEND_API_URL = 'http://localhost:3000'; // Change to your production URL when deployed
         
         // Trading Pairs Configuration
         const TRADING_PAIRS = {
@@ -819,48 +819,44 @@
                 });
             }
             
-            // Send Telegram notification
-            await sendTelegramNotification(TELEGRAM_CHAT_ID, alert, currentPrice);
+            // Send Telegram notification via secure backend
+            await sendTelegramNotification(alert, currentPrice);
         }
         
-        async function sendTelegramNotification(chatId, alert, currentPrice) {
-            if (TELEGRAM_BOT_TOKEN === 'YOUR_BOT_TOKEN') {
-                console.log('⚠️ Telegram bot not configured. Please set up bot token.');
-                return;
-            }
-            
+        async function sendTelegramNotification(alert, currentPrice) {
             try {
                 const pairConfig = TRADING_PAIRS[alert.pair || currentPair];
-                const message = `🚨 *Trade.mn Price Alert*\n\n` +
-                    `💱 Pair: ${alert.pair || currentPair}\n` +
-                    `💰 Current Price: ${currentPrice.toLocaleString()} MNT\n` +
-                    `🎯 Target: ${alert.type.toUpperCase()} ${alert.target.toLocaleString()} MNT\n` +
-                    `⏰ Time: ${new Date().toLocaleString()}\n\n` +
-                    `[View on Trade.mn](${pairConfig.url})`;
+                const message = `🚨 Trade.mn Price Alert - ${alert.type.toUpperCase()} ${alert.target.toLocaleString()} MNT reached!`;
                 
-                const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-                const response = await fetch(url, {
+                // Call secure backend API instead of Telegram directly
+                const response = await fetch(`${BACKEND_API_URL}/api/notify`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        chat_id: chatId,
-                        text: message,
-                        parse_mode: 'Markdown',
-                        disable_web_page_preview: false
+                        message: message,
+                        pair: alert.pair || currentPair,
+                        price: currentPrice,
+                        targetPrice: alert.target,
+                        type: alert.type
                     })
                 });
                 
                 if (response.ok) {
-                    console.log('✅ Telegram notification sent to:', chatId);
+                    console.log('✅ Telegram notification sent successfully');
                     showToast('📱 Telegram notification sent!', 'success');
                 } else {
                     const error = await response.json();
-                    console.error('❌ Telegram API error:', error);
-                    showToast('❌ Failed to send Telegram notification', 'error');
+                    console.error('❌ Backend API error:', error);
+                    showToast('❌ Failed to send notification', 'error');
                 }
             } catch (error) {
-                console.error('❌ Failed to send Telegram notification:', error);
-                showToast('❌ Failed to send Telegram notification', 'error');
+                console.error('❌ Failed to send notification:', error);
+                // Check if backend is running
+                if (error.message.includes('fetch')) {
+                    showToast('❌ Backend server not running', 'error');
+                } else {
+                    showToast('❌ Failed to send notification', 'error');
+                }
             }
         }
         
