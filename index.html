@@ -104,6 +104,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
                     </svg>
                     Set Price Alert
+                    <span id="pairBadge" class="text-xs bg-blue-600 px-2 py-1 rounded ml-auto">USDT/MNT</span>
                 </h2>
                 
                 <div class="space-y-4">
@@ -143,11 +144,11 @@
 
             <!-- Active Alerts -->
             <div class="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-                <h2 class="text-xl font-bold mb-6 flex items-center gap-2">
+                <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
                     <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
                     </svg>
-                    Active Alerts
+                    All Active Alerts
                 </h2>
                 
                 <div id="alertsList" class="space-y-3">
@@ -252,14 +253,14 @@
                 name: 'USDT/MNT',
                 symbol: 'USDT',
                 base: 'MNT',
-                demoPrice: 3693.00,
+                demoPrice: 3666.12,
                 url: 'https://trade.mn/exchange/USDT/MNT/'
             },
             'LTC/MNT': {
                 name: 'LTC/MNT',
                 symbol: 'LTC',
                 base: 'MNT',
-                demoPrice: 288990.00,
+                demoPrice: 288800.00,
                 url: 'https://trade.mn/exchange/LTC/MNT/'
             }
         };
@@ -318,27 +319,37 @@
             
             // Update UI
             document.getElementById('pairNameDisplay').textContent = pair;
+            document.getElementById('pairBadge').textContent = pair;
             document.getElementById('tradeLink').href = pairConfig.url;
             document.getElementById('tradeLinkHeader').href = pairConfig.url;
             document.title = `${pair} Price Alert - Trade.mn`;
             
-            // Update demo price
+            // IMPORTANT: Reset demo price to the NEW pair's base price
             demoBasePrice = pairConfig.demoPrice;
+            lastPrice = null;
+            useDemoMode = false; // Reset demo mode flag
+            
+            console.log('💰 Reset base price to:', demoBasePrice, 'MNT for', pair);
             
             // Reset price data
-            lastPrice = null;
             priceHistory = [];
             renderHistory();
             
-            // Reconnect WebSocket with new pair
+            // Disconnect and reconnect WebSocket with new pair
             if (socket) {
+                console.log('🔌 Disconnecting old WebSocket...');
                 socket.disconnect();
                 socket = null;
             }
             
-            // Restart monitoring
-            if (checkTimer) clearInterval(checkTimer);
+            // Stop current monitoring
+            if (checkTimer) {
+                clearInterval(checkTimer);
+                checkTimer = null;
+            }
             isMonitoring = false;
+            
+            // Restart monitoring with new pair
             startMonitoring();
             
             // Save preference
@@ -423,6 +434,7 @@
         function renderAlerts() {
             const container = document.getElementById('alertsList');
             
+            // Show ALL alerts from all pairs
             if (alerts.length === 0) {
                 container.innerHTML = `
                     <div class="text-gray-500 text-center py-8">
@@ -443,8 +455,11 @@
                             ${alert.type === 'above' ? '↑' : '↓'}
                         </div>
                         <div>
-                            <p class="font-semibold">${alert.target.toLocaleString()} MNT</p>
-                            <p class="text-gray-400 text-sm">${alert.pair || 'USDT/MNT'} • Alert when price goes ${alert.type}</p>
+                            <div class="flex items-center gap-2 mb-1">
+                                <p class="font-semibold">${alert.target.toLocaleString()} MNT</p>
+                                <span class="text-xs px-2 py-0.5 rounded ${alert.pair === 'USDT/MNT' ? 'bg-green-600/30 text-green-400' : 'bg-orange-600/30 text-orange-400'}">${alert.pair || 'USDT/MNT'}</span>
+                            </div>
+                            <p class="text-gray-400 text-sm">Alert when price goes ${alert.type}</p>
                         </div>
                     </div>
                     <button onclick="removeAlert(${alert.id})" class="text-gray-400 hover:text-red-400 transition p-2">
@@ -476,15 +491,30 @@
             }
 
             // Fall back to demo mode with realistic price simulation
-            // Based on current USDT/MNT rate around 3,693 MNT (from exchange page)
             useDemoMode = true;
-            const variation = (Math.random() - 0.5) * 10;
-            demoBasePrice = Math.max(3650, Math.min(3750, demoBasePrice + variation));
+            const pairConfig = TRADING_PAIRS[currentPair];
+            
+            // If this is the first call or price is way off, reset to base
+            if (!demoBasePrice || Math.abs(demoBasePrice - pairConfig.demoPrice) > pairConfig.demoPrice * 0.1) {
+                console.log('⚠️ Demo price reset to base:', pairConfig.demoPrice);
+                demoBasePrice = pairConfig.demoPrice;
+            }
+            
+            const variationPercent = 0.003; // 0.3% variation
+            const variation = (Math.random() - 0.5) * (pairConfig.demoPrice * variationPercent);
+            demoBasePrice = demoBasePrice + variation;
+            
+            // Keep price within reasonable bounds (±2% of base)
+            const minPrice = pairConfig.demoPrice * 0.98;
+            const maxPrice = pairConfig.demoPrice * 1.02;
+            demoBasePrice = Math.max(minPrice, Math.min(maxPrice, demoBasePrice));
+            
+            console.log(`🎭 Demo mode: ${currentPair} @ ${demoBasePrice.toFixed(2)} MNT`);
             
             return {
                 price: Math.round(demoBasePrice * 100) / 100,
-                high: Math.round((demoBasePrice + 25 + Math.random() * 15) * 100) / 100,
-                low: Math.round((demoBasePrice - 25 - Math.random() * 15) * 100) / 100
+                high: Math.round((demoBasePrice * 1.01) * 100) / 100,
+                low: Math.round((demoBasePrice * 0.99) * 100) / 100
             };
         }
 
@@ -742,8 +772,10 @@
         function checkAlerts(currentPrice) {
             let alertsTriggered = false;
             
+            // Only check alerts for the CURRENT pair
             alerts.forEach(alert => {
                 if (alert.triggered) return;
+                if (alert.pair !== currentPair) return; // Skip alerts for other pairs
                 
                 let triggered = false;
                 if (alert.type === 'above' && currentPrice >= alert.target) {
@@ -755,6 +787,7 @@
                 if (triggered) {
                     alert.triggered = true;
                     alertsTriggered = true;
+                    console.log(`🚨 Alert triggered for ${alert.pair}:`, alert.target, 'at price:', currentPrice);
                     triggerAlert(alert, currentPrice);
                 }
             });
@@ -858,7 +891,7 @@
             if (connected) {
                 status.innerHTML = `
                     <span class="w-2 h-2 ${isDemo ? 'bg-yellow-500' : 'bg-green-500'} rounded-full ${isDemo ? '' : 'animate-pulse'}"></span>
-                    <span class="text-gray-400">${isDemo ? 'Demo Mode' : 'Live • Trade.mn'}</span>
+                    <span class="text-gray-400">${isDemo ? 'Demo' : 'Live'} • ${currentPair}</span>
                 `;
                 
                 // Show manual input section in demo mode
@@ -946,6 +979,7 @@
                 currentPair = savedPair;
                 document.getElementById('pairSelector').value = savedPair;
                 document.getElementById('pairNameDisplay').textContent = savedPair;
+                document.getElementById('pairBadge').textContent = savedPair;
                 document.getElementById('tradeLink').href = TRADING_PAIRS[savedPair].url;
                 document.getElementById('tradeLinkHeader').href = TRADING_PAIRS[savedPair].url;
                 demoBasePrice = TRADING_PAIRS[savedPair].demoPrice;
