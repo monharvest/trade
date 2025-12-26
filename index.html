@@ -4,10 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>USDT/MNT Price Alert - Trade.mn</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Monitor USDT/MNT and LTC/MNT prices on Trade.mn with real-time alerts">
+    <meta name="theme-color" content="#3b82f6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Trade Alert">
+    <link rel="manifest" href="/manifest.json">
+    
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { 
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
         .pulse { animation: pulse 2s infinite; }
         @keyframes pulse {
             0%, 100% { opacity: 1; }
@@ -15,75 +28,113 @@
         }
         .price-up { color: #22c55e; }
         .price-down { color: #ef4444; }
+        
+        /* Mobile optimizations */
+        @media (max-width: 640px) {
+            /* Prevent horizontal scroll */
+            body { overflow-x: hidden; }
+            
+            /* Better touch targets */
+            button, a, select, input {
+                min-height: 44px;
+                min-width: 44px;
+            }
+            
+            /* Responsive text sizes */
+            #currentPrice {
+                font-size: 2.5rem !important;
+            }
+            
+            /* Compact spacing */
+            .compact-mobile {
+                padding: 1rem !important;
+            }
+            
+            /* Hide long labels on very small screens */
+            @media (max-width: 380px) {
+                .hide-xs { display: none !important; }
+            }
+        }
+        
+        /* Landscape orientation on mobile */
+        @media (max-width: 900px) and (orientation: landscape) {
+            header { padding: 0.5rem 0 !important; }
+            main { padding: 1rem 0 !important; }
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen">
     <!-- Header -->
     <header class="bg-gray-800 border-b border-gray-700">
-        <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" class="w-10 h-10 bg-gradient-to-br from-green-400 to-blue-500 rounded-lg flex items-center justify-center font-bold hover:scale-105 transition">
-                    T
-                </a>
-                <div>
-                    <h1 class="font-bold text-lg">Trade.mn Price Alert</h1>
-                    <p class="text-gray-400 text-sm">
-                        <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" class="hover:text-blue-400 transition">
-                            USDT/MNT Monitoring →
-                        </a>
-                    </p>
+        <div class="max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
+            <div class="flex items-center justify-between gap-2">
+                <!-- Logo and Title -->
+                <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+                    <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" class="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-green-400 to-blue-500 rounded-lg flex items-center justify-center font-bold hover:scale-105 transition">
+                        T
+                    </a>
+                    <div class="min-w-0">
+                        <h1 class="font-bold text-base sm:text-lg truncate">Trade.mn Alert</h1>
+                        <p class="text-gray-400 text-xs sm:text-sm truncate">
+                            <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" class="hover:text-blue-400 transition">
+                                <span class="hidden xs:inline">USDT/MNT</span> Monitoring →
+                            </a>
+                        </p>
+                    </div>
                 </div>
-            </div>
-            <div class="flex items-center gap-4">
-                <select id="pairSelector" onchange="switchPair(this.value)" class="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:border-blue-500 transition">
-                    <option value="USDT/MNT">USDT/MNT</option>
-                    <option value="LTC/MNT">LTC/MNT</option>
-                </select>
-                <a id="tradeLinkHeader" href="https://trade.mn/exchange/USDT/MNT/" target="_blank" 
-                   class="hidden sm:flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
-                    </svg>
-                    Open Trade.mn
-                </a>
-                <div id="connectionStatus" class="flex items-center gap-2 text-sm">
-                    <span class="w-2 h-2 bg-yellow-500 rounded-full pulse"></span>
-                    <span class="text-gray-400">Connecting...</span>
+                
+                <!-- Right Side Actions -->
+                <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+                    <select id="pairSelector" onchange="switchPair(this.value)" class="bg-gray-700 border border-gray-600 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-500 transition">
+                        <option value="USDT/MNT">USDT/MNT</option>
+                        <option value="LTC/MNT">LTC/MNT</option>
+                    </select>
+                    <a id="tradeLinkHeader" href="https://trade.mn/exchange/USDT/MNT/" target="_blank" 
+                       class="hidden sm:flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                        </svg>
+                        <span class="hidden md:inline">Open Trade.mn</span>
+                    </a>
+                    <div id="connectionStatus" class="hidden sm:flex items-center gap-2 text-xs sm:text-sm">
+                        <span class="w-2 h-2 bg-yellow-500 rounded-full pulse"></span>
+                        <span class="text-gray-400 hidden md:inline">Connecting...</span>
+                    </div>
                 </div>
             </div>
         </div>
     </header>
 
-    <main class="max-w-6xl mx-auto px-4 py-8">
+    <main class="max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <!-- Price Display -->
-        <div class="bg-gray-800 rounded-2xl p-8 mb-8 border border-gray-700">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                <div>
+        <div class="bg-gray-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 mb-4 sm:mb-8 border border-gray-700">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 sm:gap-6">
+                <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1">
-                        <p class="text-gray-400 text-sm">Current <span id="pairNameDisplay">USDT/MNT</span> Price</p>
+                        <p class="text-gray-400 text-xs sm:text-sm">Current <span id="pairNameDisplay">USDT/MNT</span> Price</p>
                         <span class="text-xs bg-blue-600/30 text-blue-400 px-2 py-0.5 rounded">Trade.mn</span>
                     </div>
-                    <div class="flex items-baseline gap-3">
-                        <span id="currentPrice" class="text-5xl font-bold">--</span>
-                        <span class="text-gray-400 text-xl">MNT</span>
+                    <div class="flex items-baseline gap-2 sm:gap-3">
+                        <span id="currentPrice" class="text-4xl sm:text-5xl font-bold">--</span>
+                        <span class="text-gray-400 text-lg sm:text-xl">MNT</span>
                     </div>
-                    <div class="flex items-center gap-4 mt-3">
-                        <span id="priceChange" class="text-lg font-medium">--</span>
-                        <span id="lastUpdate" class="text-gray-500 text-sm">Last update: --</span>
+                    <div class="flex items-center gap-3 sm:gap-4 mt-2 sm:mt-3 flex-wrap">
+                        <span id="priceChange" class="text-base sm:text-lg font-medium">--</span>
+                        <span id="lastUpdate" class="text-gray-500 text-xs sm:text-sm">Last update: --</span>
                     </div>
                 </div>
-                <div class="flex flex-col gap-2 text-right">
-                    <div class="bg-gray-700/50 rounded-lg px-4 py-2">
+                <div class="flex flex-row md:flex-col gap-2 text-left md:text-right">
+                    <div class="bg-gray-700/50 rounded-lg px-3 sm:px-4 py-2 flex-1 md:flex-none">
                         <p class="text-gray-400 text-xs">24h High</p>
-                        <p id="highPrice" class="text-green-400 font-semibold">--</p>
+                        <p id="highPrice" class="text-green-400 font-semibold text-sm sm:text-base">--</p>
                     </div>
-                    <div class="bg-gray-700/50 rounded-lg px-4 py-2">
+                    <div class="bg-gray-700/50 rounded-lg px-3 sm:px-4 py-2 flex-1 md:flex-none">
                         <p class="text-gray-400 text-xs">24h Low</p>
-                        <p id="lowPrice" class="text-red-400 font-semibold">--</p>
+                        <p id="lowPrice" class="text-red-400 font-semibold text-sm sm:text-base">--</p>
                     </div>
                     <a id="tradeLink" href="https://trade.mn/exchange/USDT/MNT/" target="_blank" 
-                       class="text-blue-400 hover:text-blue-300 text-xs flex items-center justify-end gap-1 mt-1">
-                        View on Trade.mn
+                       class="text-blue-400 hover:text-blue-300 text-xs flex items-center md:justify-end gap-1 mt-1">
+                        <span class="hide-xs">View on</span> Trade.mn
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
                         </svg>
@@ -96,39 +147,39 @@
         <input type="hidden" id="emailAddress" value="">
         <input type="hidden" id="telegramChatId" value="1231509877">
 
-        <div class="grid md:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8">
             <!-- Set Alert -->
-            <div class="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-                <h2 class="text-xl font-bold mb-6 flex items-center gap-2">
-                    <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="bg-gray-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-700">
+                <h2 class="text-lg sm:text-xl font-bold mb-4 sm:mb-6 flex items-center gap-2">
+                    <svg class="w-5 h-5 sm:w-6 sm:h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
                     </svg>
-                    Set Price Alert
-                    <span id="pairBadge" class="text-xs bg-blue-600 px-2 py-1 rounded ml-auto">USDT/MNT</span>
+                    <span class="flex-1 min-w-0 truncate">Set Price Alert</span>
+                    <span id="pairBadge" class="text-xs bg-blue-600 px-2 py-1 rounded flex-shrink-0">USDT/MNT</span>
                 </h2>
                 
-                <div class="space-y-4">
+                <div class="space-y-3 sm:space-y-4">
                     <div>
-                        <label class="block text-gray-400 text-sm mb-2">Alert Type</label>
+                        <label class="block text-gray-400 text-xs sm:text-sm mb-2">Alert Type</label>
                         <div class="flex gap-2">
-                            <button id="btnAbove" onclick="setAlertType('above')" class="flex-1 py-3 px-4 rounded-lg border-2 border-green-500 bg-green-500/20 text-green-400 font-medium transition">
-                                Price Above ↑
+                            <button id="btnAbove" onclick="setAlertType('above')" class="flex-1 py-2.5 sm:py-3 px-3 sm:px-4 rounded-lg border-2 border-green-500 bg-green-500/20 text-green-400 text-sm sm:text-base font-medium transition">
+                                <span class="hidden xs:inline">Price </span>Above ↑
                             </button>
-                            <button id="btnBelow" onclick="setAlertType('below')" class="flex-1 py-3 px-4 rounded-lg border-2 border-gray-600 text-gray-400 font-medium transition hover:border-gray-500">
-                                Price Below ↓
+                            <button id="btnBelow" onclick="setAlertType('below')" class="flex-1 py-2.5 sm:py-3 px-3 sm:px-4 rounded-lg border-2 border-gray-600 text-gray-400 text-sm sm:text-base font-medium transition hover:border-gray-500">
+                                <span class="hidden xs:inline">Price </span>Below ↓
                             </button>
                         </div>
                     </div>
                     
                     <div>
-                        <label class="block text-gray-400 text-sm mb-2">Target Price (MNT)</label>
+                        <label class="block text-gray-400 text-xs sm:text-sm mb-2">Target Price (MNT)</label>
                         <input type="number" id="targetPrice" placeholder="e.g., 3500" 
-                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-lg focus:outline-none focus:border-blue-500 transition">
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 text-base sm:text-lg focus:outline-none focus:border-blue-500 transition">
                     </div>
                     
                     <div>
-                        <label class="block text-gray-400 text-sm mb-2">Check Interval</label>
-                        <select id="checkInterval" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 focus:outline-none focus:border-blue-500">
+                        <label class="block text-gray-400 text-xs sm:text-sm mb-2">Check Interval</label>
+                        <select id="checkInterval" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base focus:outline-none focus:border-blue-500">
                             <option value="10000">Every 10 seconds</option>
                             <option value="30000" selected>Every 30 seconds</option>
                             <option value="60000">Every 1 minute</option>
@@ -136,101 +187,101 @@
                         </select>
                     </div>
                     
-                    <button onclick="createAlert()" class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 py-3 rounded-lg font-semibold transition transform hover:scale-[1.02]">
+                    <button onclick="createAlert()" class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 py-2.5 sm:py-3 rounded-lg text-sm sm:text-base font-semibold transition transform hover:scale-[1.02] active:scale-100">
                         Create Alert
                     </button>
                 </div>
             </div>
 
             <!-- Active Alerts -->
-            <div class="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-                <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
-                    <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="bg-gray-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-700">
+                <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-2">
+                    <svg class="w-5 h-5 sm:w-6 sm:h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
                     </svg>
                     All Active Alerts
                 </h2>
                 
-                <div id="alertsList" class="space-y-3">
-                    <div class="text-gray-500 text-center py-8">
-                        <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div id="alertsList" class="space-y-2 sm:space-y-3">
+                    <div class="text-gray-500 text-center py-6 sm:py-8">
+                        <svg class="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
                         </svg>
-                        <p>No active alerts</p>
-                        <p class="text-sm">Create your first alert above</p>
+                        <p class="text-sm sm:text-base">No active alerts</p>
+                        <p class="text-xs sm:text-sm">Create your first alert above</p>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Price History -->
-        <div class="bg-gray-800 rounded-2xl p-6 border border-gray-700 mt-8">
-            <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
-                <svg class="w-6 h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div class="bg-gray-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-700 mt-4 sm:mt-8">
+            <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4 flex items-center gap-2">
+                <svg class="w-5 h-5 sm:w-6 sm:h-6 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
                 </svg>
-                Recent Price Updates
+                <span class="hide-xs">Recent </span>Price Updates
             </h2>
-            <div id="priceHistory" class="overflow-x-auto">
-                <table class="w-full text-sm">
+            <div id="priceHistory" class="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
+                <table class="w-full text-xs sm:text-sm">
                     <thead>
                         <tr class="text-gray-400 border-b border-gray-700">
-                            <th class="text-left py-3">Time</th>
-                            <th class="text-right py-3">Price (MNT)</th>
-                            <th class="text-right py-3">Change</th>
+                            <th class="text-left py-2 sm:py-3">Time</th>
+                            <th class="text-right py-2 sm:py-3">Price (MNT)</th>
+                            <th class="text-right py-2 sm:py-3">Change</th>
                         </tr>
                     </thead>
                     <tbody id="priceHistoryBody">
-                        <tr><td colspan="3" class="py-8 text-center text-gray-500">Waiting for data...</td></tr>
+                        <tr><td colspan="3" class="py-6 sm:py-8 text-center text-gray-500 text-xs sm:text-sm">Waiting for data...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
         <!-- Manual Price Input (Fallback) -->
-        <div id="manualPriceSection" class="bg-yellow-900/30 border border-yellow-700 rounded-2xl p-6 mt-8 hidden">
-            <h3 class="text-yellow-400 font-bold mb-3 flex items-center gap-2">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div id="manualPriceSection" class="bg-yellow-900/30 border border-yellow-700 rounded-xl sm:rounded-2xl p-4 sm:p-6 mt-4 sm:mt-8 hidden">
+            <h3 class="text-yellow-400 text-sm sm:text-base font-bold mb-2 sm:mb-3 flex items-center gap-2">
+                <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                 </svg>
                 Demo Mode Active
             </h3>
-            <p class="text-gray-300 text-sm mb-4">
+            <p class="text-gray-300 text-xs sm:text-sm mb-3 sm:mb-4">
                 Due to browser security (CORS), we can't directly access Trade.mn's API. 
                 You can manually enter the current price from 
                 <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" class="text-blue-400 hover:underline">Trade.mn Exchange</a>
                 or the demo will simulate realistic price movements.
             </p>
-            <div class="flex gap-3">
-                <input type="number" id="manualPriceInput" placeholder="Enter current USDT/MNT price" 
-                    class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:outline-none focus:border-yellow-500">
-                <button onclick="setManualPrice()" class="bg-yellow-600 hover:bg-yellow-700 px-6 py-2 rounded-lg font-medium transition">
+            <div class="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                <input type="number" id="manualPriceInput" placeholder="Enter current price" 
+                    class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 sm:px-4 py-2 text-sm sm:text-base focus:outline-none focus:border-yellow-500">
+                <button onclick="setManualPrice()" class="bg-yellow-600 hover:bg-yellow-700 px-4 sm:px-6 py-2 rounded-lg text-sm sm:text-base font-medium transition active:scale-95">
                     Update Price
                 </button>
             </div>
         </div>
 
         <!-- API Info -->
-        <div class="bg-gray-800/50 rounded-xl p-4 mt-8 border border-gray-700">
-            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 text-sm">
-                <p class="text-gray-400">
-                    📡 Monitoring <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" class="text-blue-400 hover:underline">Trade.mn USDT/MNT</a>
+        <div class="bg-gray-800/50 rounded-xl p-3 sm:p-4 mt-4 sm:mt-8 border border-gray-700">
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-xs sm:text-sm">
+                <p class="text-gray-400 text-center">
+                    📡 Monitoring <a href="https://trade.mn/exchange/USDT/MNT/" target="_blank" class="text-blue-400 hover:underline">Trade.mn</a>
                 </p>
                 <span class="hidden sm:inline text-gray-600">•</span>
-                <a href="https://docs.trade.mn" target="_blank" class="text-blue-400 hover:underline">API Documentation</a>
+                <a href="https://docs.trade.mn" target="_blank" class="text-blue-400 hover:underline">API Docs</a>
                 <span class="hidden sm:inline text-gray-600">•</span>
-                <p class="text-gray-400">Auto-refresh enabled</p>
+                <p class="text-gray-400">Auto-refresh <span class="hide-xs">enabled</span>✓</p>
             </div>
         </div>
     </main>
 
     <!-- Notification Toast -->
-    <div id="toast" class="fixed bottom-4 right-4 bg-green-600 text-white px-6 py-4 rounded-xl shadow-2xl transform translate-y-20 opacity-0 transition-all duration-300 z-50">
-        <div class="flex items-center gap-3">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div id="toast" class="fixed bottom-4 right-4 left-4 sm:left-auto bg-green-600 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-xl shadow-2xl transform translate-y-20 opacity-0 transition-all duration-300 z-50 max-w-sm sm:max-w-none mx-auto sm:mx-0">
+        <div class="flex items-center gap-2 sm:gap-3">
+            <svg class="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
-            <span id="toastMessage">Alert triggered!</span>
+            <span id="toastMessage" class="text-sm sm:text-base">Alert triggered!</span>
         </div>
     </div>
 
@@ -996,6 +1047,64 @@
                     startMonitoring();
                 }
             });
+        });
+
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => {
+                        console.log('✅ PWA: Service Worker registered', registration.scope);
+                    })
+                    .catch((error) => {
+                        console.log('❌ PWA: Service Worker registration failed', error);
+                    });
+            });
+        }
+
+        // PWA Install Prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            
+            // Show install button in toast
+            const installToast = document.createElement('div');
+            installToast.className = 'fixed top-4 right-4 bg-blue-600 text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3';
+            installToast.innerHTML = `
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                </svg>
+                <div class="flex-1">
+                    <p class="font-semibold">Install App</p>
+                    <p class="text-sm opacity-90">Add to home screen</p>
+                </div>
+                <button id="installBtn" class="bg-white text-blue-600 px-4 py-2 rounded-lg font-medium hover:bg-gray-100 transition">
+                    Install
+                </button>
+                <button id="dismissBtn" class="text-white/80 hover:text-white ml-2">
+                    ✕
+                </button>
+            `;
+            document.body.appendChild(installToast);
+
+            document.getElementById('installBtn').addEventListener('click', async () => {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`User response to install prompt: ${outcome}`);
+                deferredPrompt = null;
+                installToast.remove();
+            });
+
+            document.getElementById('dismissBtn').addEventListener('click', () => {
+                installToast.remove();
+            });
+        });
+
+        // PWA Installed
+        window.addEventListener('appinstalled', () => {
+            console.log('✅ PWA: App installed');
+            showToast('📱 App installed successfully!', 'success');
         });
     </script>
 </body>
