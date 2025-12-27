@@ -1055,14 +1055,51 @@
 
         // PWA Service Worker Registration
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then((registration) => {
-                        console.log('✅ PWA: Service Worker registered', registration.scope);
-                    })
-                    .catch((error) => {
-                        console.log('❌ PWA: Service Worker registration failed', error);
-                    });
+            window.addEventListener('load', async () => {
+                try {
+                    const registration = await navigator.serviceWorker.register('/sw.js');
+                    console.log('✅ PWA: Service Worker registered', registration.scope);
+                    
+                    // Request notification permission
+                    if ('Notification' in window && Notification.permission === 'default') {
+                        const permission = await Notification.requestPermission();
+                        console.log('📱 Notification permission:', permission);
+                    }
+                    
+                    // Register periodic background sync (check prices every 15 minutes)
+                    if ('periodicSync' in registration) {
+                        try {
+                            await registration.periodicSync.register('check-prices', {
+                                minInterval: 15 * 60 * 1000 // 15 minutes
+                            });
+                            console.log('✅ Periodic background sync registered');
+                        } catch (error) {
+                            console.log('⚠️ Periodic sync not available:', error);
+                            // Fallback: use regular background sync
+                            if ('sync' in registration) {
+                                await registration.sync.register('check-prices');
+                                console.log('✅ Background sync registered');
+                            }
+                        }
+                    }
+                    
+                    // Send alerts to service worker when they change
+                    function syncAlertsToServiceWorker() {
+                        if (navigator.serviceWorker.controller) {
+                            navigator.serviceWorker.controller.postMessage({
+                                type: 'SAVE_ALERTS',
+                                alerts: alerts
+                            });
+                        }
+                    }
+                    
+                    // Sync alerts initially and whenever they change
+                    syncAlertsToServiceWorker();
+                    setInterval(syncAlertsToServiceWorker, 30000); // Sync every 30 seconds
+                    
+                } catch (error) {
+                    console.log('❌ PWA: Service Worker registration failed', error);
+                }
             });
         }
 
