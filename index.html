@@ -296,7 +296,9 @@
     <script>
         // Backend API Configuration
         // The backend server handles Telegram notifications securely
-        const BACKEND_API_URL = 'http://localhost:3000'; // Change to your production URL when deployed
+        const BACKEND_API_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:3000' 
+            : 'https://trade-telegram-bot.monharvest.workers.dev';
         
         // Trading Pairs Configuration
         const TRADING_PAIRS = {
@@ -876,6 +878,12 @@
         
         async function sendTelegramNotification(alert, currentPrice) {
             try {
+                // Skip if backend URL is not properly configured
+                if (!BACKEND_API_URL || BACKEND_API_URL.includes('your-backend')) {
+                    console.log('ℹ️ Telegram notifications disabled (backend not configured)');
+                    return;
+                }
+                
                 const pairConfig = TRADING_PAIRS[alert.pair || currentPair];
                 const message = `🚨 Trade.mn Price Alert - ${alert.type.toUpperCase()} ${alert.target.toLocaleString()} MNT reached!`;
                 
@@ -902,11 +910,9 @@
                 }
             } catch (error) {
                 console.error('❌ Failed to send notification:', error);
-                // Check if backend is running
-                if (error.message.includes('fetch')) {
+                // Only show error on localhost (where backend should be available)
+                if (window.location.hostname === 'localhost') {
                     showToast('❌ Backend server not running', 'error');
-                } else {
-                    showToast('❌ Failed to send notification', 'error');
                 }
             }
         }
@@ -941,10 +947,8 @@
                     <span class="text-gray-400">${isDemo ? 'Demo' : 'Live'} • ${currentPair}</span>
                 `;
                 
-                // Show manual input section in demo mode
-                if (isDemo && manualSection) {
-                    manualSection.classList.remove('hidden');
-                } else if (manualSection) {
+                // Always hide manual section - we don't need it
+                if (manualSection) {
                     manualSection.classList.add('hidden');
                 }
             } else {
