@@ -547,7 +547,7 @@
             // If we already have socket connection, wait for data
             if (socket && socket.connected) {
                 console.log('⏳ Waiting for WebSocket data...');
-                // Return last known price or demo price while waiting
+                // Return last known price or null while waiting for first data
                 if (lastPrice) {
                     return {
                         price: lastPrice,
@@ -555,6 +555,8 @@
                         low: lastPrice - 50
                     };
                 }
+                // On first load, don't show demo price - wait for real data
+                return null;
             }
 
             // Fall back to demo mode with realistic price simulation
@@ -1003,14 +1005,12 @@
             console.log('🎬 Starting price monitoring...');
             console.log('⏱️ Refresh interval:', interval / 1000, 'seconds');
             
-            // Initial fetch
-            try {
-                const data = await fetchPrice();
-                updatePriceDisplay(data);
-                updateConnectionStatus(true, useDemoMode);
-            } catch (e) {
-                console.error('❌ Error fetching price:', e);
-                updateConnectionStatus(false);
+            // Don't fetch immediately on start - wait for WebSocket connection
+            updateConnectionStatus(false);
+            
+            // Try to establish WebSocket connection
+            if (!socket && typeof io !== 'undefined') {
+                trySocketConnection();
             }
 
             // Set up interval
@@ -1018,8 +1018,10 @@
             checkTimer = setInterval(async () => {
                 try {
                     const data = await fetchPrice();
-                    updatePriceDisplay(data);
-                    updateConnectionStatus(true, useDemoMode);
+                    if (data) {  // Only update if we have real data
+                        updatePriceDisplay(data);
+                        updateConnectionStatus(true, useDemoMode);
+                    }
                 } catch (e) {
                     console.error('❌ Error fetching price:', e);
                 }

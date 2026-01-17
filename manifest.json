@@ -21,12 +21,5 @@
       "purpose": "any maskable"
     }
   ],
-  "categories": ["finance", "productivity"],
-  "screenshots": [
-    {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 540 720'><rect width='540' height='720' fill='%23111827'/></svg>",
-      "sizes": "540x720",
-      "type": "image/svg+xml"
-    }
-  ]
+  "categories": ["finance", "productivity"]
 }
