@@ -1,7 +1,9 @@
 const io = require('socket.io-client');
+const http = require('http');
 
 const WORKER_URL = process.env.WORKER_URL || 'https://trade-telegram-bot.monharvest.workers.dev';
 const CHECK_INTERVAL = 20 * 60 * 1000; // 20 minutes
+const PORT = process.env.PORT || 3000;
 
 let currentPrice = null;
 let socket = null;
@@ -150,3 +152,24 @@ process.on('SIGINT', () => {
 });
 
 log('✅ Monitor is running...');
+
+// Create HTTP server for health checks
+const server = http.createServer((req, res) => {
+  if (req.url === '/health' || req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      connected: socket?.connected || false,
+      currentPrice: currentPrice,
+      workerUrl: WORKER_URL,
+      uptime: process.uptime()
+    }));
+  } else {
+    res.writeHead(404);
+    res.end('Not Found');
+  }
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  log(`🌐 HTTP server listening on port ${PORT}`);
+});
