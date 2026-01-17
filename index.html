@@ -350,9 +350,8 @@
             },
         ];
 
-        // For demo/fallback - simulate price when API is not accessible
+        // Connection state tracking
         let useDemoMode = false;
-        let demoBasePrice = TRADING_PAIRS[currentPair].demoPrice;
 
         function switchPair(pair) {
             console.log('🔄 Switching to', pair);
@@ -366,12 +365,11 @@
             document.getElementById('tradeLinkHeader').href = pairConfig.url;
             document.title = `${pair} Price Alert - Trade.mn`;
             
-            // IMPORTANT: Reset demo price to the NEW pair's base price
-            demoBasePrice = pairConfig.demoPrice;
+            // Reset price state for new pair
             lastPrice = null;
-            useDemoMode = false; // Reset demo mode flag
+            useDemoMode = false;
             
-            console.log('💰 Reset base price to:', demoBasePrice, 'MNT for', pair);
+            console.log('💱 Switched to:', pair);
             
             // Reset price data
             priceHistory = [];
@@ -559,32 +557,10 @@
                 return null;
             }
 
-            // Fall back to demo mode with realistic price simulation
-            useDemoMode = true;
-            const pairConfig = TRADING_PAIRS[currentPair];
-            
-            // If this is the first call or price is way off, reset to base
-            if (!demoBasePrice || Math.abs(demoBasePrice - pairConfig.demoPrice) > pairConfig.demoPrice * 0.1) {
-                console.log('⚠️ Demo price reset to base:', pairConfig.demoPrice);
-                demoBasePrice = pairConfig.demoPrice;
-            }
-            
-            const variationPercent = 0.003; // 0.3% variation
-            const variation = (Math.random() - 0.5) * (pairConfig.demoPrice * variationPercent);
-            demoBasePrice = demoBasePrice + variation;
-            
-            // Keep price within reasonable bounds (±2% of base)
-            const minPrice = pairConfig.demoPrice * 0.98;
-            const maxPrice = pairConfig.demoPrice * 1.02;
-            demoBasePrice = Math.max(minPrice, Math.min(maxPrice, demoBasePrice));
-            
-            console.log(`🎭 Demo mode: ${currentPair} @ ${demoBasePrice.toFixed(2)} MNT`);
-            
-            return {
-                price: Math.round(demoBasePrice * 100) / 100,
-                high: Math.round((demoBasePrice * 1.01) * 100) / 100,
-                low: Math.round((demoBasePrice * 0.99) * 100) / 100
-            };
+            // Don't use demo mode - only show real data or saved price
+            // Return null to keep showing the last saved/known price
+            console.log('⏳ Waiting for real price data...');
+            return null;
         }
 
         function trySocketConnection() {
@@ -993,10 +969,7 @@
                 return;
             }
             
-            // Update the demo base price
-            demoBasePrice = price;
-            
-            // Update display
+            // Update display with manual price
             updatePriceDisplay({
                 price: price,
                 high: price + 20,
@@ -1058,7 +1031,6 @@
                 document.getElementById('pairBadge').textContent = savedPair;
                 document.getElementById('tradeLink').href = TRADING_PAIRS[savedPair].url;
                 document.getElementById('tradeLinkHeader').href = TRADING_PAIRS[savedPair].url;
-                demoBasePrice = TRADING_PAIRS[savedPair].demoPrice;
                 console.log('💱 Loaded saved pair:', savedPair);
             }
             
