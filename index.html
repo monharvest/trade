@@ -542,24 +542,54 @@
                 trySocketConnection();
             }
 
-            // If we already have socket connection, wait for data
-            if (socket && socket.connected) {
-                console.log('⏳ Waiting for WebSocket data...');
-                // Return last known price or null while waiting for first data
-                if (lastPrice) {
-                    return {
-                        price: lastPrice,
-                        high: lastPrice + 50,
-                        low: lastPrice - 50
-                    };
-                }
-                // On first load, don't show demo price - wait for real data
-                return null;
+            // If we already have socket connection and data, use it
+            if (socket && socket.connected && lastPrice) {
+                console.log('⏳ Using WebSocket data...');
+                return {
+                    price: lastPrice,
+                    high: lastPrice + 50,
+                    low: lastPrice - 50
+                };
             }
 
-            // Don't use demo mode - only show real data or saved price
-            // Return null to keep showing the last saved/known price
-            console.log('⏳ Waiting for real price data...');
+            // Try HTTP API as fallback
+            console.log('🌐 Trying HTTP API...');
+            for (const endpoint of API_ENDPOINTS) {
+                try {
+                    const response = await fetch(endpoint.url(), {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        const parsed = endpoint.parser(data);
+                        if (parsed && parsed.price) {
+                            console.log('✅ HTTP API success:', parsed.price);
+                            updateConnectionStatus(true, false);
+                            return {
+                                price: parsed.price,
+                                high: parsed.price + 50,
+                                low: parsed.price - 50
+                            };
+                        }
+                    }
+                } catch (e) {
+                    console.log('❌ API endpoint failed:', e.message);
+                }
+            }
+
+            // Return last known price if available
+            if (lastPrice) {
+                return {
+                    price: lastPrice,
+                    high: lastPrice + 50,
+                    low: lastPrice - 50
+                };
+            }
+
+            // No data available yet
+            console.log('⏳ Waiting for price data...');
             return null;
         }
 
@@ -987,12 +1017,23 @@
             console.log('🎬 Starting price monitoring...');
             console.log('⏱️ Refresh interval:', interval / 1000, 'seconds');
             
-            // Don't fetch immediately on start - wait for WebSocket connection
+            // Show connecting status
             updateConnectionStatus(false);
             
             // Try to establish WebSocket connection
             if (!socket && typeof io !== 'undefined') {
                 trySocketConnection();
+            }
+            
+            // Also try HTTP API immediately (don't wait for WebSocket)
+            try {
+                const data = await fetchPrice();
+                if (data) {
+                    updatePriceDisplay(data);
+                    updateConnectionStatus(true, false);
+                }
+            } catch (e) {
+                console.error('❌ Initial fetch error:', e);
             }
 
             // Set up interval
@@ -1002,7 +1043,7 @@
                     const data = await fetchPrice();
                     if (data) {  // Only update if we have real data
                         updatePriceDisplay(data);
-                        updateConnectionStatus(true, useDemoMode);
+                        updateConnectionStatus(true, false);
                     }
                 } catch (e) {
                     console.error('❌ Error fetching price:', e);
