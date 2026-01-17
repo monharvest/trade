@@ -796,6 +796,15 @@
             lastPrice = newPrice;
             lastUpdateEl.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
             
+            // Save last price to localStorage for next page load
+            localStorage.setItem('lastPrice', JSON.stringify({
+                price: newPrice,
+                high: data.high,
+                low: data.low,
+                pair: currentPair,
+                timestamp: Date.now()
+            }));
+            
             if (data.high) highEl.textContent = data.high.toLocaleString('en-US', { minimumFractionDigits: 2 });
             if (data.low) lowEl.textContent = data.low.toLocaleString('en-US', { minimumFractionDigits: 2 });
 
@@ -1054,6 +1063,21 @@
             }
             
             console.log('💱 Trading Pair:', currentPair);
+            
+            // Load and display last saved price immediately
+            const savedPrice = localStorage.getItem('lastPrice');
+            if (savedPrice) {
+                try {
+                    const priceData = JSON.parse(savedPrice);
+                    // Only show if it's for the current pair and not too old (within 24 hours)
+                    if (priceData.pair === currentPair && Date.now() - priceData.timestamp < 24 * 60 * 60 * 1000) {
+                        updatePriceDisplay(priceData);
+                        console.log('📊 Loaded last saved price:', priceData.price);
+                    }
+                } catch (e) {
+                    console.error('Failed to load saved price:', e);
+                }
+            }
             
             // Load saved alerts
             loadAlerts();
