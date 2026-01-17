@@ -112,12 +112,41 @@ ${message}
   }
 }
 
-// Fetch current price from Trade.mn via Socket.IO polling
+// Fetch current price from Trade.mn - multiple methods
 async function fetchCurrentPrice() {
+  // Method 1: Try REST API
   try {
-    // Get Socket.IO session
-    const initResponse = await fetch('https://trade.mn:8989/socket.io/?EIO=4&transport=polling');
-    if (!initResponse.ok) return null;
+    const apiResponse = await fetch('https://trade.mn/api/market/USDT/MNT', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'application/json'
+      }
+    });
+    if (apiResponse.ok) {
+      const data = await apiResponse.json();
+      if (data && data.last_price) {
+        return parseFloat(data.last_price);
+      }
+    }
+  } catch (e) {
+    console.log('REST API failed:', e.message);
+  }
+
+  // Method 2: Try Socket.IO with proper headers
+  try {
+    const initResponse = await fetch('https://trade.mn:8989/socket.io/?EIO=4&transport=polling', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*',
+        'Origin': 'https://trade.mn',
+        'Referer': 'https://trade.mn/'
+      }
+    });
+    
+    if (!initResponse.ok) {
+      console.log('Socket.IO init failed:', initResponse.status);
+      return null;
+    }
     
     const initText = await initResponse.text();
     const sidMatch = initText.match(/"sid":"([^"]+)"/);
@@ -125,23 +154,30 @@ async function fetchCurrentPrice() {
     
     const sid = sidMatch[1];
     
-    // Send join message for USDT/MNT
     await fetch(`https://trade.mn:8989/socket.io/?EIO=4&transport=polling&sid=${sid}`, {
       method: 'POST',
       body: '42["message",["join","USDT/MNT"]]',
-      headers: { 'Content-Type': 'text/plain' }
+      headers: { 
+        'Content-Type': 'text/plain',
+        'User-Agent': 'Mozilla/5.0',
+        'Origin': 'https://trade.mn'
+      }
     });
     
-    // Wait a moment for data
     await new Promise(r => setTimeout(r, 500));
     
-    // Get price data
-    const dataResponse = await fetch(`https://trade.mn:8989/socket.io/?EIO=4&transport=polling&sid=${sid}`);
+    const dataResponse = await fetch(`https://trade.mn:8989/socket.io/?EIO=4&transport=polling&sid=${sid}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Origin': 'https://trade.mn'
+      }
+    });
+    
     if (!dataResponse.ok) return null;
     
     const dataText = await dataResponse.text();
     
-    // Try to parse orders (orderbook) for mid-price
+    // Try orders
     const ordersMatch = dataText.match(/\["orders",(\{.*?\})\]/s);
     if (ordersMatch) {
       try {
@@ -155,12 +191,10 @@ async function fetchCurrentPrice() {
             return (bestBid + bestAsk) / 2;
           }
         }
-      } catch (e) {
-        console.log('Failed to parse orders:', e);
-      }
+      } catch (e) {}
     }
     
-    // Try to parse trades for last price
+    // Try trades
     const tradesMatch = dataText.match(/\["trades",\[(.*?)\]\]/s);
     if (tradesMatch) {
       try {
@@ -168,16 +202,13 @@ async function fetchCurrentPrice() {
         if (tradesData.length > 0 && tradesData[0].price) {
           return parseFloat(tradesData[0].price);
         }
-      } catch (e) {
-        console.log('Failed to parse trades:', e);
-      }
+      } catch (e) {}
     }
-    
-    return null;
   } catch (error) {
-    console.error('Error fetching price:', error);
-    return null;
+    console.error('Socket.IO failed:', error.message);
   }
+  
+  return null;
 }
 
 // Send Telegram notification
