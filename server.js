@@ -3,6 +3,7 @@
 
 const express = require('express');
 const cors = require('cors');
+const { io } = require('socket.io-client');
 require('dotenv').config();
 
 const app = express();
@@ -19,10 +20,20 @@ app.use(express.static(__dirname));
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
+// Trade.mn WebSocket connection
+const WS_URL = 'https://trade.mn:8989';
+let tradeSocket = null;
+let currentPrice = null;
+
 // In-memory storage for alerts (you can replace this with a database later)
-let alerts = [];
+let alerts = [
+    // Default alerts - will be overwritten by client sync
+    { id: 1, pair: 'USDT/MNT', type: 'below', target: 3630, enabled: true, created: new Date() },
+    { id: 2, pair: 'USDT/MNT', type: 'above', target: 3660, enabled: true, created: new Date() }
+];
 let lastPrices = {}; // Track last known prices for each pair
 let priceCheckInterval = null;
+const CHECK_INTERVAL_MINUTES = 20; // Check every 20 minutes
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -121,12 +132,113 @@ ${message}
     }
 });
 
+// Connect to Trade.mn WebSocket for real-time prices
+function connectToTradeWebSocket() {
+    if (tradeSocket && tradeSocket.connected) {
+        return;
+    }
+    
+    console.log('🔌 Connecting to Trade.mn WebSocket...');
+    
+    tradeSocket = io(WS_URL, {
+        transports: ['polling', 'websocket'],
+        upgrade: true,
+        timeout: 15000,
+        reconnection: true,
+        reconnectionDelay: 5000,
+        reconnectionAttempts: 5
+    });
+    
+    tradeSocket.on('connect', () => {
+        console.log('✅ Connected to Trade.mn WebSocket');
+        tradeSocket.emit('message', ['join', 'USDT/MNT']);
+        setTimeout(() => tradeSocket.emit('join', 'USDT/MNT'), 500);
+    });
+    
+    tradeSocket.on('message', (data) => {
+        if (Array.isArray(data)) {
+            const [event, payload] = data;
+            if (event === 'matched_order' && payload && payload.price) {
+                currentPrice = parseFloat(payload.price);
+                console.log(`💹 Real-time price update: ${currentPrice} MNT`);
+            } else if (event === 'trades' && Array.isArray(payload) && payload.length > 0) {
+                currentPrice = parseFloat(payload[0].price);
+                console.log(`📊 Trade price: ${currentPrice} MNT`);
+            } else if (event === 'orders' && payload && payload.buy && payload.sell) {
+                const buyPrices = Object.keys(payload.buy).map(Number);
+                const sellPrices = Object.keys(payload.sell).map(Number);
+                if (buyPrices.length > 0 && sellPrices.length > 0) {
+                    const bestBid = Math.max(...buyPrices);
+                    const bestAsk = Math.min(...sellPrices);
+                    currentPrice = (bestBid + bestAsk) / 2;
+                    console.log(`📊 Order book price: ${currentPrice.toFixed(2)} MNT`);
+                }
+            }
+        }
+    });
+    
+    // Also listen for direct events (alternative format from Trade.mn)
+    tradeSocket.on('orders', (data) => {
+        if (data && data.buy && data.sell) {
+            const buyPrices = Object.keys(data.buy).map(Number);
+            const sellPrices = Object.keys(data.sell).map(Number);
+            if (buyPrices.length > 0 && sellPrices.length > 0) {
+                const bestBid = Math.max(...buyPrices);
+                const bestAsk = Math.min(...sellPrices);
+                currentPrice = (bestBid + bestAsk) / 2;
+                console.log(`📈 Direct orders - Price: ${currentPrice.toFixed(2)} MNT`);
+            }
+        }
+    });
+    
+    tradeSocket.on('matched_order', (data) => {
+        if (data && data.price) {
+            currentPrice = parseFloat(data.price);
+            console.log(`💹 Direct matched_order: ${currentPrice} MNT`);
+        }
+    });
+    
+    tradeSocket.on('trades', (data) => {
+        if (Array.isArray(data) && data.length > 0 && data[0].price) {
+            currentPrice = parseFloat(data[0].price);
+            console.log(`📊 Direct trades: ${currentPrice} MNT`);
+        }
+    });
+    
+    tradeSocket.on('disconnect', () => {
+        console.log('❌ Disconnected from Trade.mn WebSocket');
+    });
+    
+    tradeSocket.on('error', (error) => {
+        console.error('WebSocket error:', error.message);
+    });
+}
+
 // Fetch current price from Trade.mn API
 async function fetchCurrentPrice(pair) {
+    // If we have a recent WebSocket price, use it
+    if (currentPrice) {
+        return currentPrice;
+    }
+    
     try {
-        const response = await fetch(`https://trade-telegram-bot.monharvest.workers.dev/api/current-price?pair=${encodeURIComponent(pair)}`);
-        const data = await response.json();
-        return data.price || null;
+        // Try Trade.mn depth API (orderbook)
+        const depthResponse = await fetch(`https://trade.mn/api/depth?symbol=${encodeURIComponent(pair)}`);
+        if (depthResponse.ok) {
+            const data = await depthResponse.json();
+            if (data && data.buy && data.sell) {
+                const buyPrices = Object.keys(data.buy).map(Number);
+                const sellPrices = Object.keys(data.sell).map(Number);
+                if (buyPrices.length > 0 && sellPrices.length > 0) {
+                    const bestBid = Math.max(...buyPrices);
+                    const bestAsk = Math.min(...sellPrices);
+                    const midPrice = (bestBid + bestAsk) / 2;
+                    return midPrice;
+                }
+            }
+        }
+        
+        return null;
     } catch (error) {
         console.error(`Error fetching price for ${pair}:`, error.message);
         return null;
@@ -229,20 +341,24 @@ ${alert.type === 'above' ? '📈' : '📉'} Alert Type: *${alert.type === 'above
     }
 }
 
-// Start periodic price monitoring (every 15 minutes)
+// Start periodic price monitoring (every 20 minutes)
 function startPriceMonitoring() {
     if (priceCheckInterval) {
         console.log('⚠️  Price monitoring already running');
         return;
     }
     
-    console.log('🎯 Starting price monitoring (checking every 15 minutes)...');
+    console.log(`🎯 Starting price monitoring (checking every ${CHECK_INTERVAL_MINUTES} minutes)...`);
+    console.log('🚨 Active alerts:');
+    alerts.filter(a => a.enabled).forEach(a => {
+        console.log(`   - ${a.pair}: ${a.type} ${a.target.toLocaleString()} MNT`);
+    });
     
     // Check immediately on start
     checkAlertsAndNotify();
     
-    // Then check every 15 minutes (900000 milliseconds)
-    priceCheckInterval = setInterval(checkAlertsAndNotify, 15 * 60 * 1000);
+    // Then check every X minutes
+    priceCheckInterval = setInterval(checkAlertsAndNotify, CHECK_INTERVAL_MINUTES * 60 * 1000);
 }
 
 // Stop monitoring
@@ -268,6 +384,12 @@ app.post('/api/check-now', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`📱 Telegram notifications configured: ${!!TELEGRAM_BOT_TOKEN && !!TELEGRAM_CHAT_ID}`);
-    console.log(`\n⏰ Price monitoring will check every 15 minutes`);
-    console.log(`📝 Send alerts to /api/alerts to start monitoring\n`);
+    console.log(`\n⏰ Price monitoring will check every ${CHECK_INTERVAL_MINUTES} minutes`);
+    
+    // Connect to Trade.mn WebSocket for real-time prices
+    connectToTradeWebSocket();
+    
+    // Auto-start monitoring with default alerts
+    console.log('\n🔔 Starting automatic price monitoring...');
+    startPriceMonitoring();
 });
