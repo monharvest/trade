@@ -6,7 +6,7 @@
     <title>USDT/MNT Price Alert - Trade.mn</title>
     
     <!-- PWA Meta Tags -->
-    <meta name="description" content="Monitor USDT/MNT and LTC/MNT prices on Trade.mn with real-time alerts">
+    <meta name="description" content="Monitor USDT/MNT prices on Trade.mn with real-time alerts">
     <meta name="theme-color" content="#3b82f6">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -85,10 +85,6 @@
                 
                 <!-- Right Side Actions -->
                 <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-                    <select id="pairSelector" onchange="switchPair(this.value)" class="bg-gray-700 border border-gray-600 rounded-lg px-2 sm:px-3 py-2 text-xs sm:text-sm font-medium focus:outline-none focus:border-blue-500 transition">
-                        <option value="USDT/MNT">USDT/MNT</option>
-                        <option value="LTC/MNT">LTC/MNT</option>
-                    </select>
                     <a id="tradeLinkHeader" href="https://trade.mn/exchange/USDT/MNT/" target="_blank" 
                        class="hidden sm:flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-3 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -308,13 +304,6 @@
                 base: 'MNT',
                 demoPrice: 3666.12,
                 url: 'https://trade.mn/exchange/USDT/MNT/'
-            },
-            'LTC/MNT': {
-                name: 'LTC/MNT',
-                symbol: 'LTC',
-                base: 'MNT',
-                demoPrice: 288800.00,
-                url: 'https://trade.mn/exchange/LTC/MNT/'
             }
         };
         
@@ -460,6 +449,28 @@
         function saveAlerts() {
             localStorage.setItem('priceAlerts', JSON.stringify(alerts));
             console.log('💾 Alerts saved to localStorage');
+            
+            // Sync alerts with server for background monitoring
+            syncAlertsWithServer();
+        }
+        
+        async function syncAlertsWithServer() {
+            try {
+                const response = await fetch('/api/alerts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ alerts })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('☁️  Alerts synced with server:', data.alertCount, 'alerts');
+                } else {
+                    console.warn('⚠️  Failed to sync alerts with server');
+                }
+            } catch (error) {
+                console.error('❌ Error syncing alerts:', error);
+            }
         }
         
         function loadAlerts() {
@@ -473,6 +484,9 @@
                     });
                     console.log('📂 Loaded', alerts.length, 'alerts from storage');
                     renderAlerts();
+                    
+                    // Sync with server for background monitoring
+                    syncAlertsWithServer();
                     
                     // Start monitoring if there are alerts
                     if (alerts.length > 0 && !isMonitoring) {

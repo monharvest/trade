@@ -1,7 +1,7 @@
 {
   "name": "Trade.mn Price Alert",
   "short_name": "Trade Alert",
-  "description": "Monitor USDT/MNT and LTC/MNT prices on Trade.mn with real-time alerts",
+  "description": "Monitor USDT/MNT prices on Trade.mn with real-time alerts",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#111827",
