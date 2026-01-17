@@ -2,10 +2,10 @@
   "name": "trade-price-alert",
   "version": "1.0.0",
   "description": "Price alert notification server for Trade.mn",
-  "main": "server.js",
+  "main": "monitor-server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node monitor-server.js",
+    "dev": "nodemon monitor-server.js"
   },
   "keywords": [
     "telegram",
