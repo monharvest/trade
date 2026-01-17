@@ -51,6 +51,11 @@ export default {
       return jsonResponse({ pair, price, timestamp: new Date().toISOString() });
     }
 
+    // Price update endpoint - receives price from monitor page
+    if (request.method === 'POST' && url.pathname === '/api/price-update') {
+      return handlePriceUpdate(request, env);
+    }
+
     // Notification endpoint (existing functionality)
     if (request.method === 'POST' && url.pathname.includes('/api/notify')) {
       return handleNotify(request, env);
@@ -107,6 +112,79 @@ ${message}
     } else {
       return jsonResponse({ error: 'Failed to send notification' }, 500);
     }
+  } catch (error) {
+    return jsonResponse({ error: 'Internal server error' }, 500);
+  }
+}
+
+// Handle price update from monitor page
+async function handlePriceUpdate(request, env) {
+  try {
+    const body = await request.json();
+    const { price, pair, timestamp } = body;
+    
+    if (!price || typeof price !== 'number') {
+      return jsonResponse({ error: 'Invalid price' }, 400);
+    }
+    
+    const alertBelow = parseFloat(env.ALERT_BELOW) || 3630;
+    const alertAbove = parseFloat(env.ALERT_ABOVE) || 3660;
+    
+    let alertTriggered = false;
+    let alertType = null;
+    
+    // Check below threshold
+    if (price <= alertBelow) {
+      alertType = 'below';
+      alertTriggered = true;
+      
+      const message = `
+🔔 *PRICE ALERT!*
+
+📉 USDT/MNT is *BELOW* threshold!
+
+💰 Current Price: *${price.toLocaleString()} MNT*
+🎯 Alert Threshold: *${alertBelow.toLocaleString()} MNT*
+
+⏰ Time: ${timestamp || new Date().toISOString()}
+
+[Open Trade.mn →](https://trade.mn/exchange/USDT/MNT/)
+      `.trim();
+      
+      await sendTelegramNotification(env, message);
+    }
+    
+    // Check above threshold
+    if (price >= alertAbove) {
+      alertType = 'above';
+      alertTriggered = true;
+      
+      const message = `
+🔔 *PRICE ALERT!*
+
+📈 USDT/MNT is *ABOVE* threshold!
+
+💰 Current Price: *${price.toLocaleString()} MNT*
+🎯 Alert Threshold: *${alertAbove.toLocaleString()} MNT*
+
+⏰ Time: ${timestamp || new Date().toISOString()}
+
+[Open Trade.mn →](https://trade.mn/exchange/USDT/MNT/)
+      `.trim();
+      
+      await sendTelegramNotification(env, message);
+    }
+    
+    return jsonResponse({
+      success: true,
+      price,
+      alertBelow,
+      alertAbove,
+      alertTriggered,
+      alertType,
+      timestamp: timestamp || new Date().toISOString()
+    });
+    
   } catch (error) {
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
