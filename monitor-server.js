@@ -12,22 +12,50 @@ function log(message) {
   console.log(`[${new Date().toISOString()}] ${message}`);
 }
 
+// Scrape price from Trade.mn website as fallback
+async function scrapePriceFromWebsite() {
+  try {
+    const response = await fetch('https://trade.mn/api/v2/peatio/public/markets/usdtmnt/tickers');
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    if (data && data.ticker && data.ticker.last) {
+      const price = parseFloat(data.ticker.last);
+      log(`💰 Scraped price from API: ${price} MNT`);
+      return price;
+    }
+    
+    return null;
+  } catch (error) {
+    log(`❌ Failed to scrape price: ${error.message}`);
+    return null;
+  }
+}
+
 // Send price to worker
 async function sendPriceToWorker() {
-  if (!currentPrice) {
-    log('⚠️ No price data to send');
+  // Try WebSocket price first, fallback to scraping
+  let priceToSend = currentPrice;
+  
+  if (!priceToSend) {
+    log('⚠️ No WebSocket price data, trying API scraping...');
+    priceToSend = await scrapePriceFromWebsite();
+  }
+  
+  if (!priceToSend) {
+    log('⚠️ No price data available from any source');
     return;
   }
   
   try {
-    log(`📤 Sending price ${currentPrice} MNT to worker...`);
+    log(`📤 Sending price ${priceToSend} MNT to worker...`);
     
     const response = await fetch(`${WORKER_URL}/api/price-update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         pair: 'USDT/MNT',
-        price: currentPrice,
+        price: priceToSend,
         timestamp: new Date().toISOString()
       })
     });
