@@ -1,74 +1,191 @@
 const io = require('socket.io-client');
 const http = require('http');
+const fs = require('fs').promises;
+const path = require('path');
+const express = require('express');
+const cors = require('cors');
 
-const WORKER_URL = process.env.WORKER_URL || 'https://trade-telegram-bot.monharvest.workers.dev';
+require('dotenv').config();
+
 const CHECK_INTERVAL = 20 * 60 * 1000; // 20 minutes
 const PORT = process.env.PORT || 3000;
+const ALERT_BELOW = parseFloat(process.env.ALERT_BELOW) || 3630;
+const ALERT_ABOVE = parseFloat(process.env.ALERT_ABOVE) || 3660;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const STATE_FILE = path.join(__dirname, 'alert-state.json');
 
 let currentPrice = null;
 let socket = null;
+let lastAlertState = 'none'; // 'none', 'below', 'above', or 'normal'
 
 function log(message) {
   console.log(`[${new Date().toISOString()}] ${message}`);
 }
 
-// Scrape price from Trade.mn website as fallback
-async function scrapePriceFromWebsite() {
+// Load alert state from file
+async function loadAlertState() {
   try {
-    const response = await fetch('https://trade.mn/api/v2/peatio/public/markets/usdtmnt/tickers');
-    if (!response.ok) return null;
-    
-    const data = await response.json();
-    if (data && data.ticker && data.ticker.last) {
-      const price = parseFloat(data.ticker.last);
-      log(`💰 Scraped price from API: ${price} MNT`);
-      return price;
-    }
-    
-    return null;
+    const data = await fs.readFile(STATE_FILE, 'utf8');
+    const state = JSON.parse(data);
+    lastAlertState = state.lastAlertState || 'none';
+    log(`📂 Loaded alert state: ${lastAlertState}`);
   } catch (error) {
-    log(`❌ Failed to scrape price: ${error.message}`);
-    return null;
+    lastAlertState = 'none';
+    log(`📂 No previous alert state, starting fresh`);
   }
 }
 
-// Send price to worker
-async function sendPriceToWorker() {
-  // Try WebSocket price first, fallback to scraping
-  let priceToSend = currentPrice;
+// Save alert state to file
+async function saveAlertState(state) {
+  try {
+    await fs.writeFile(STATE_FILE, JSON.stringify({ lastAlertState: state, timestamp: new Date().toISOString() }));
+    lastAlertState = state;
+  } catch (error) {
+    log(`⚠️ Failed to save alert state: ${error.message}`);
+  }
+}
+
+// Send Telegram notification
+async function sendTelegramNotification(message) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+    log('⚠️ Telegram credentials not configured');
+    return false;
+  }
+
+  try {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text: message,
+        parse_mode: 'Markdown'
+      })
+    });
+
+    if (response.ok) {
+      log('✅ Telegram notification sent successfully');
+      return true;
+    } else {
+      const error = await response.text();
+      log(`❌ Telegram API error: ${error}`);
+      return false;
+    }
+  } catch (error) {
+    log(`❌ Failed to send Telegram notification: ${error.message}`);
+    return false;
+  }
+}
+
+// Scrape price from Trade.mn website as fallback
+async function scrapePriceFromWebsite() {
+  const endpoints = [
+    'https://trade.mn/api/v2/peatio/public/markets/usdtmnt/tickers',
+    'https://trade.mn/api/v2/markets/usdtmnt/ticker',
+    'https://trade.mn/api/markets/usdtmnt/ticker',
+  ];
   
-  if (!priceToSend) {
-    log('⚠️ No WebSocket price data, trying API scraping...');
-    priceToSend = await scrapePriceFromWebsite();
+  for (const url of endpoints) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) continue;
+      
+      const data = await response.json();
+      const price = data?.ticker?.last || data?.last || data?.price;
+      
+      if (price) {
+        const priceNum = parseFloat(price);
+        log(`💰 Scraped price from API (${url}): ${priceNum} MNT`);
+        return priceNum;
+      }
+    } catch (error) {
+      log(`⚠️ Failed endpoint ${url}: ${error.message}`);
+    }
   }
   
-  if (!priceToSend) {
+  log(`❌ All API endpoints failed`);
+  return null;
+}
+
+// Check price and send alerts if needed
+async function checkPriceAndAlert() {
+  let priceToCheck = currentPrice;
+  
+  if (!priceToCheck) {
+    log('⚠️ No WebSocket price data, trying API scraping...');
+    priceToCheck = await scrapePriceFromWebsite();
+  }
+  
+  if (!priceToCheck) {
     log('⚠️ No price data available from any source');
     return;
   }
   
-  try {
-    log(`📤 Sending price ${priceToSend} MNT to worker...`);
-    
-    const response = await fetch(`${WORKER_URL}/api/price-update`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pair: 'USDT/MNT',
-        price: priceToSend,
-        timestamp: new Date().toISOString()
-      })
-    });
-    
-    const data = await response.json();
-    
-    if (data.alertTriggered) {
-      log(`🔔 Alert triggered! ${data.alertType} threshold (${currentPrice} MNT)`);
+  log(`💰 Checking price: ${priceToCheck} MNT (thresholds: ≤${ALERT_BELOW} / ≥${ALERT_ABOVE})`);
+  
+  let newState = 'normal';
+  let alertTriggered = false;
+  
+  // Check below threshold - only alert if crossing down
+  if (priceToCheck <= ALERT_BELOW) {
+    newState = 'below';
+    if (lastAlertState !== 'below') {
+      alertTriggered = true;
+      const message = `🔔 *PRICE ALERT!*
+
+📉 USDT/MNT is *BELOW* threshold!
+
+💰 Current Price: *${priceToCheck.toLocaleString()} MNT*
+🎯 Alert Threshold: *${ALERT_BELOW.toLocaleString()} MNT*
+
+⏰ Time: ${new Date().toISOString()}
+
+[Open Trade.mn →](https://trade.mn/exchange/USDT/MNT/)`;
+      
+      await sendTelegramNotification(message);
+      log(`🔔 Alert sent: Price dropped below ${ALERT_BELOW} MNT`);
     } else {
-      log(`✅ Price checked - no alert (${currentPrice} MNT)`);
+      log(`⏸️ Price still below threshold, no alert sent (last state: ${lastAlertState})`);
     }
-  } catch (error) {
-    log(`❌ Failed to send to worker: ${error.message}`);
+  }
+  // Check above threshold - only alert if crossing up
+  else if (priceToCheck >= ALERT_ABOVE) {
+    newState = 'above';
+    if (lastAlertState !== 'above') {
+      alertTriggered = true;
+      const message = `🔔 *PRICE ALERT!*
+
+📈 USDT/MNT is *ABOVE* threshold!
+
+💰 Current Price: *${priceToCheck.toLocaleString()} MNT*
+🎯 Alert Threshold: *${ALERT_ABOVE.toLocaleString()} MNT*
+
+⏰ Time: ${new Date().toISOString()}
+
+[Open Trade.mn →](https://trade.mn/exchange/USDT/MNT/)`;
+      
+      await sendTelegramNotification(message);
+      log(`🔔 Alert sent: Price went above ${ALERT_ABOVE} MNT`);
+    } else {
+      log(`⏸️ Price still above threshold, no alert sent (last state: ${lastAlertState})`);
+    }
+  }
+  // Price is in normal range
+  else {
+    newState = 'normal';
+    log(`✅ Price in normal range (${ALERT_BELOW} - ${ALERT_ABOVE})`);
+  }
+  
+  // Save new state if it changed
+  if (newState !== lastAlertState) {
+    await saveAlertState(newState);
+    log(`📝 Alert state changed: ${lastAlertState} → ${newState}`);
+  }
+  
+  if (!alertTriggered) {
+    log(`✅ Price checked - no alert needed`);
   }
 }
 
@@ -95,6 +212,18 @@ function connectToTrade() {
   
   socket.on('connect_error', (error) => {
     log(`❌ Connection error: ${error.message}`);
+  });
+  
+  // Listen for 24h change data (most reliable)
+  socket.on('change24', (data) => {
+    try {
+      if (data && data['USDT/MNT'] && data['USDT/MNT'].lastPrice) {
+        currentPrice = parseFloat(data['USDT/MNT'].lastPrice);
+        log(`💰 Price updated: ${currentPrice} MNT (from change24)`);
+      }
+    } catch (e) {
+      log(`⚠️ Failed to parse change24: ${e.message}`);
+    }
   });
   
   // Listen for price updates
@@ -140,31 +269,35 @@ function connectToTrade() {
 }
 
 // Initialize
-log('🚀 Trade.mn 24/7 Monitor starting...');
-log(`📍 Worker URL: ${WORKER_URL}`);
-log(`⏱️  Check interval: ${CHECK_INTERVAL / 60000} minutes`);
+async function initialize() {
+  log('🚀 Trade.mn 24/7 Monitor starting...');
+  log(`📊 Alert thresholds: Below ${ALERT_BELOW} MNT / Above ${ALERT_ABOVE} MNT`);
+  log(`⏱️  Check interval: ${CHECK_INTERVAL / 60000} minutes`);
+  log(`📱 Telegram configured: ${TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID ? 'Yes' : 'No'}`);
+  
+  await loadAlertState();
+  connectToTrade();
 
-connectToTrade();
+  // Check price immediately after 10 seconds
+  setTimeout(() => {
+    if (currentPrice) {
+      checkPriceAndAlert();
+    } else {
+      log('⚠️ No price data yet, waiting...');
+    }
+  }, 10000);
 
-// Send price immediately after 10 seconds
-setTimeout(() => {
-  if (currentPrice) {
-    sendPriceToWorker();
-  } else {
-    log('⚠️ No price data yet, waiting...');
-  }
-}, 10000);
+  // Check price every 20 minutes
+  setInterval(checkPriceAndAlert, CHECK_INTERVAL);
 
-// Check price every 20 minutes
-setInterval(sendPriceToWorker, CHECK_INTERVAL);
-
-// Reconnect check every minute
-setInterval(() => {
-  if (!socket || !socket.connected) {
-    log('🔄 Reconnecting...');
-    connectToTrade();
-  }
-}, 60000);
+  // Reconnect check every minute
+  setInterval(() => {
+    if (!socket || !socket.connected) {
+      log('🔄 Reconnecting...');
+      connectToTrade();
+    }
+  }, 60000);
+}
 
 // Keep process alive
 process.on('SIGTERM', () => {
@@ -189,7 +322,8 @@ const server = http.createServer((req, res) => {
       status: 'ok',
       connected: socket?.connected || false,
       currentPrice: currentPrice,
-      workerUrl: WORKER_URL,
+      lastAlertState: lastAlertState,
+      thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE },
       uptime: process.uptime()
     }));
   } else {
@@ -201,3 +335,36 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   log(`🌐 HTTP server listening on port ${PORT}`);
 });
+
+// Create Express API for manual checks
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+app.get('/api/check', async (req, res) => {
+  await checkPriceAndAlert();
+  res.json({ 
+    success: true, 
+    message: 'Check completed', 
+    currentPrice, 
+    lastAlertState 
+  });
+});
+
+app.get('/api/status', (req, res) => {
+  res.json({
+    status: 'ok',
+    connected: socket?.connected || false,
+    currentPrice,
+    lastAlertState,
+    thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE },
+    telegramConfigured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID),
+    uptime: process.uptime()
+  });
+});
+
+app.listen(PORT + 1, '0.0.0.0', () => {
+  log(`🌐 API server listening on port ${PORT + 1}`);
+});
+
+initialize();
