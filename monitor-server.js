@@ -15,11 +15,21 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const STATE_FILE = path.join(__dirname, 'alert-state.json');
 
 let currentPrice = null;
+let lastLoggedPrice = null; // For reducing log spam
 let socket = null;
 let lastAlertState = 'none'; // 'none', 'below', 'above', or 'normal'
+const PRICE_LOG_THRESHOLD = 5; // Only log if price changes by 5 MNT or more
 
 function log(message) {
   console.log(`[${new Date().toISOString()}] ${message}`);
+}
+
+// Log price update only if significant change
+function logPriceUpdate(price, source) {
+  if (!lastLoggedPrice || Math.abs(price - lastLoggedPrice) >= PRICE_LOG_THRESHOLD) {
+    log(`💰 Price updated: ${price} MNT (from ${source})`);
+    lastLoggedPrice = price;
+  }
 }
 
 // Load alert state from file
@@ -225,7 +235,7 @@ function connectToTrade() {
     try {
       if (data && data['USDT/MNT'] && data['USDT/MNT'].lastPrice) {
         currentPrice = parseFloat(data['USDT/MNT'].lastPrice);
-        log(`💰 Price updated: ${currentPrice} MNT (from change24)`);
+        logPriceUpdate(currentPrice, 'change24');
       }
     } catch (e) {
       log(`⚠️ Failed to parse change24: ${e.message}`);
@@ -243,7 +253,7 @@ function connectToTrade() {
           const bestBid = Math.max(...buyPrices);
           const bestAsk = Math.min(...sellPrices);
           currentPrice = (bestBid + bestAsk) / 2;
-          log(`💰 Price updated: ${currentPrice} MNT (from orderbook)`);
+          logPriceUpdate(currentPrice, 'orderbook');
         }
       }
     } catch (e) {
@@ -255,7 +265,7 @@ function connectToTrade() {
     try {
       if (Array.isArray(trades) && trades.length > 0 && trades[0].price) {
         currentPrice = parseFloat(trades[0].price);
-        log(`💰 Price updated: ${currentPrice} MNT (from trade)`);
+        logPriceUpdate(currentPrice, 'trade');
       }
     } catch (e) {
       log(`⚠️ Failed to parse trades: ${e.message}`);
@@ -266,7 +276,7 @@ function connectToTrade() {
     try {
       if (order && order.price) {
         currentPrice = parseFloat(order.price);
-        log(`💰 Price updated: ${currentPrice} MNT (from matched order)`);
+        logPriceUpdate(currentPrice, 'matched order');
       }
     } catch (e) {
       log(`⚠️ Failed to parse matched order: ${e.message}`);
