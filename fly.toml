@@ -10,6 +10,7 @@ primary_region = 'nrt'
 
 [env]
   NODE_ENV = 'production'
+  NODE_OPTIONS = '--max-old-space-size=200'
 
 [http_service]
   internal_port = 3000

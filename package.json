@@ -4,7 +4,7 @@
   "description": "Price alert notification server for Trade.mn",
   "main": "monitor-server.js",
   "scripts": {
-    "start": "node monitor-server.js",
+    "start": "node --expose-gc monitor-server.js",
     "dev": "nodemon monitor-server.js"
   },
   "keywords": [

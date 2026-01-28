@@ -1,5 +1,4 @@
 const io = require('socket.io-client');
-const http = require('http');
 const fs = require('fs').promises;
 const path = require('path');
 const express = require('express');
@@ -193,6 +192,13 @@ async function checkPriceAndAlert() {
 function connectToTrade() {
   log('🔌 Connecting to Trade.mn WebSocket...');
   
+  // Clean up existing socket to prevent memory leaks
+  if (socket) {
+    socket.removeAllListeners();
+    socket.close();
+    socket = null;
+  }
+  
   socket = io('https://trade.mn:8989', {
     transports: ['websocket', 'polling'],
     reconnection: true,
@@ -299,47 +305,37 @@ async function initialize() {
   }, 60000);
 }
 
-// Keep process alive
-process.on('SIGTERM', () => {
-  log('📴 SIGTERM received, closing...');
-  if (socket) socket.close();
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  log('📴 SIGINT received, closing...');
-  if (socket) socket.close();
-  process.exit(0);
-});
-
 log('✅ Monitor is running...');
 
-// Create HTTP server for health checks
-const server = http.createServer((req, res) => {
-  if (req.url === '/health' || req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      status: 'ok',
-      connected: socket?.connected || false,
-      currentPrice: currentPrice,
-      lastAlertState: lastAlertState,
-      thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE },
-      uptime: process.uptime()
-    }));
-  } else {
-    res.writeHead(404);
-    res.end('Not Found');
-  }
-});
-
-server.listen(PORT, '0.0.0.0', () => {
-  log(`🌐 HTTP server listening on port ${PORT}`);
-});
-
-// Create Express API for manual checks
+// Create single Express server (prevents memory leak from duplicate servers)
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    connected: socket?.connected || false,
+    currentPrice: currentPrice,
+    lastAlertState: lastAlertState,
+    thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE },
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  });
+});
+
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    connected: socket?.connected || false,
+    currentPrice: currentPrice,
+    lastAlertState: lastAlertState,
+    thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE },
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  });
+});
 
 app.get('/api/check', async (req, res) => {
   await checkPriceAndAlert();
@@ -359,12 +355,39 @@ app.get('/api/status', (req, res) => {
     lastAlertState,
     thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE },
     telegramConfigured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID),
-    uptime: process.uptime()
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
   });
 });
 
-app.listen(PORT + 1, '0.0.0.0', () => {
-  log(`🌐 API server listening on port ${PORT + 1}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  log(`🌐 Server listening on port ${PORT}`);
 });
+
+// Graceful shutdown cleanup
+function cleanup() {
+  log('📴 Shutting down gracefully...');
+  if (socket) {
+    socket.removeAllListeners();
+    socket.close();
+  }
+  server.close(() => {
+    log('✅ Server closed');
+    process.exit(0);
+  });
+  // Force exit after 10 seconds
+  setTimeout(() => process.exit(0), 10000);
+}
+
+process.on('SIGTERM', cleanup);
+process.on('SIGINT', cleanup);
+
+// Periodic garbage collection hint (if available)
+if (global.gc) {
+  setInterval(() => {
+    global.gc();
+    log(`♻️  Manual GC triggered - Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
+  }, 30 * 60 * 1000); // Every 30 minutes
+}
 
 initialize();
