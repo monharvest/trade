@@ -10,6 +10,7 @@ const CHECK_INTERVAL = 20 * 60 * 1000; // 20 minutes
 const PORT = process.env.PORT || 3000;
 const ALERT_BELOW = parseFloat(process.env.ALERT_BELOW) || 3630;
 const ALERT_ABOVE = parseFloat(process.env.ALERT_ABOVE) || 3660;
+const ALERT_ABOVE2 = parseFloat(process.env.ALERT_ABOVE2) || 3665;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const STATE_FILE = path.join(__dirname, 'alert-state.json');
@@ -132,7 +133,7 @@ async function checkPriceAndAlert() {
     return;
   }
   
-  log(`💰 Checking price: ${priceToCheck} MNT (thresholds: ≤${ALERT_BELOW} / ≥${ALERT_ABOVE})`);
+  log(`💰 Checking price: ${priceToCheck} MNT (thresholds: ≤${ALERT_BELOW} / ≥${ALERT_ABOVE} / ≥${ALERT_ABOVE2})`);
   
   let newState = 'normal';
   let alertTriggered = false;
@@ -159,10 +160,32 @@ async function checkPriceAndAlert() {
       log(`⏸️ Price still below threshold, no alert sent (last state: ${lastAlertState})`);
     }
   }
+  // Check above2 threshold - only alert if crossing up
+  else if (priceToCheck >= ALERT_ABOVE2) {
+    newState = 'above2';
+    if (lastAlertState !== 'above2') {
+      alertTriggered = true;
+      const message = `🔔 *PRICE ALERT!*
+
+🚀 USDT/MNT is *ABOVE* ${ALERT_ABOVE2.toLocaleString()} MNT!
+
+💰 Current Price: *${priceToCheck.toLocaleString()} MNT*
+🎯 Alert Threshold: *${ALERT_ABOVE2.toLocaleString()} MNT*
+
+⏰ Time: ${new Date().toISOString()}
+
+[Open Trade.mn →](https://trade.mn/exchange/USDT/MNT/)`;
+      
+      await sendTelegramNotification(message);
+      log(`🔔 Alert sent: Price went above ${ALERT_ABOVE2} MNT`);
+    } else {
+      log(`⏸️ Price still above ${ALERT_ABOVE2} threshold, no alert sent (last state: ${lastAlertState})`);
+    }
+  }
   // Check above threshold - only alert if crossing up
   else if (priceToCheck >= ALERT_ABOVE) {
     newState = 'above';
-    if (lastAlertState !== 'above') {
+    if (lastAlertState !== 'above' && lastAlertState !== 'above2') {
       alertTriggered = true;
       const message = `🔔 *PRICE ALERT!*
 
@@ -287,7 +310,7 @@ function connectToTrade() {
 // Initialize
 async function initialize() {
   log('🚀 Trade.mn 24/7 Monitor starting...');
-  log(`📊 Alert thresholds: Below ${ALERT_BELOW} MNT / Above ${ALERT_ABOVE} MNT`);
+  log(`📊 Alert thresholds: Below ${ALERT_BELOW} MNT / Above ${ALERT_ABOVE} MNT / Above ${ALERT_ABOVE2} MNT`);
   log(`⏱️  Check interval: ${CHECK_INTERVAL / 60000} minutes`);
   log(`📱 Telegram configured: ${TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID ? 'Yes' : 'No'}`);
   
@@ -329,7 +352,7 @@ app.get('/health', (req, res) => {
     connected: socket?.connected || false,
     currentPrice: currentPrice,
     lastAlertState: lastAlertState,
-    thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE },
+    thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE, above2: ALERT_ABOVE2 },
     uptime: process.uptime(),
     memory: process.memoryUsage()
   });
@@ -341,7 +364,7 @@ app.get('/', (req, res) => {
     connected: socket?.connected || false,
     currentPrice: currentPrice,
     lastAlertState: lastAlertState,
-    thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE },
+    thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE, above2: ALERT_ABOVE2 },
     uptime: process.uptime(),
     memory: process.memoryUsage()
   });
@@ -363,7 +386,7 @@ app.get('/api/status', (req, res) => {
     connected: socket?.connected || false,
     currentPrice,
     lastAlertState,
-    thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE },
+    thresholds: { below: ALERT_BELOW, above: ALERT_ABOVE, above2: ALERT_ABOVE2 },
     telegramConfigured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID),
     uptime: process.uptime(),
     memory: process.memoryUsage()
