@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>USDT/MNT alerts</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111;
+      --card: #1c1c1c;
+      --fg: #f2f2f2;
+      --muted: #9a9a9a;
+      --line: #2a2a2a;
+      --up: #3dd68c;
+      --down: #ff6b6b;
+      --accent: #6aa6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    main { max-width: 28rem; margin: 0 auto; padding: 16px 16px 48px; }
+    h1 { font-size: 1.1rem; font-weight: 650; margin: 0; }
+    .muted { color: var(--muted); }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .price { font-size: 2rem; font-weight: 700; letter-spacing: -0.03em; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #666; flex: 0 0 auto; }
+    .dot.ok { background: var(--up); }
+    .dot.warn { background: #e6b84d; }
+    .dot.bad { background: var(--down); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      margin-top: 12px;
+    }
+    label { display: block; font-size: 0.85rem; color: var(--muted); margin: 10px 0 6px; }
+    input, select, button {
+      font: inherit;
+      min-height: 44px;
+    }
+    input, select {
+      width: 100%;
+      background: #111;
+      color: var(--fg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 0 16px;
+      background: var(--accent);
+      color: #081018;
+      font-weight: 650;
+    }
+    button.full { width: 100%; margin-top: 12px; }
+    button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+    button.danger { background: transparent; color: var(--down); border: 1px solid var(--line); }
+    .alert {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px 12px;
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+    }
+    .alert:first-child { border-top: 0; padding-top: 0; }
+    .dir.above { color: var(--up); }
+    .dir.below { color: var(--down); }
+    .actions { display: flex; gap: 8px; }
+    .banner {
+      background: #2a2308;
+      color: #f0d58a;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.9rem;
+      margin-top: 10px;
+    }
+    .err { color: var(--down); margin-top: 8px; }
+    details { margin-top: 8px; }
+    summary { min-height: 44px; display: flex; align-items: center; color: var(--muted); cursor: pointer; }
+    #app, #login { display: none; }
+    #app.show, #login.show { display: block; }
+  </style>
+</head>
+<body>
+  <main>
+    <section id="login">
+      <h1>USDT/MNT alerts</h1>
+      <p class="muted">Password for the monitor.</p>
+      <form id="login-form" class="card">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <button class="full" type="submit">Log in</button>
+        <p id="login-err" class="err" hidden></p>
+      </form>
+    </section>
+
+    <section id="app">
+      <div class="row">
+        <h1>USDT/MNT</h1>
+        <span class="row"><span id="dot" class="dot"></span><span id="conn" class="muted">…</span></span>
+      </div>
+      <div id="price" class="price">—</div>
+      <p id="updated" class="muted"></p>
+
+      <div class="card">
+        <div class="row"><strong>Alerts</strong><span id="count" class="muted"></span></div>
+        <div id="list"></div>
+      </div>
+
+      <form id="add" class="card">
+        <strong>Add alert</strong>
+        <label for="direction">Direction</label>
+        <select id="direction">
+          <option value="above">Above</option>
+          <option value="below">Below</option>
+        </select>
+        <label for="target">Price (MNT)</label>
+        <input id="target" type="number" inputmode="decimal" step="0.01" min="0.01" required>
+        <label for="repeat">Repeat</label>
+        <select id="repeat">
+          <option value="always">Always (re-arm)</option>
+          <option value="once">Once, then stop</option>
+        </select>
+        <div id="already" class="banner" hidden></div>
+        <details>
+          <summary>Advanced</summary>
+          <label for="hysteresis">Hysteresis (MNT)</label>
+          <input id="hysteresis" type="number" inputmode="decimal" step="0.1" min="0" value="5">
+        </details>
+        <button class="full" type="submit">Add</button>
+        <p id="add-err" class="err" hidden></p>
+      </form>
+
+      <div class="card">
+        <button id="test" class="ghost full" type="button">Test Telegram</button>
+      </div>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let price = null;
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, {
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', ...(opts.headers || {}) },
+        ...opts,
+      });
+      if (res.status === 204) return null;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error(data.error || res.statusText);
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    }
+
+    function fmt(n) {
+      return Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+    }
+
+    function showLogin(msg) {
+      $('app').classList.remove('show');
+      $('login').classList.add('show');
+      $('login-err').hidden = !msg;
+      $('login-err').textContent = msg || '';
+    }
+
+    function showApp() {
+      $('login').classList.remove('show');
+      $('app').classList.add('show');
+    }
+
+    function paintStatus(s) {
+      price = s.price;
+      $('price').textContent = s.price == null ? '—' : fmt(s.price);
+      const stale = s.priceAgeSeconds == null || s.priceAgeSeconds > 120;
+      if (s.price != null && stale) $('price').textContent = '—';
+      const dot = $('dot');
+      dot.className = 'dot';
+      if (!s.connected && s.price == null) {
+        dot.classList.add('bad');
+        $('conn').textContent = 'offline';
+      } else if (!s.connected) {
+        dot.classList.add('warn');
+        $('conn').textContent = 'socket down';
+      } else {
+        dot.classList.add('ok');
+        $('conn').textContent = stale ? 'stale' : 'live';
+      }
+      if (s.priceAgeSeconds == null) $('updated').textContent = 'No price yet';
+      else if (stale) $('updated').textContent = `Stale (${s.priceAgeSeconds}s ago)`;
+      else $('updated').textContent = `Updated ${s.priceAgeSeconds}s ago`;
+      updateAlready();
+    }
+
+    function updateAlready() {
+      const el = $('already');
+      const target = parseFloat($('target').value);
+      const dir = $('direction').value;
+      if (!price || !target) { el.hidden = true; return; }
+      const met = dir === 'above' ? price >= target : price <= target;
+      el.hidden = !met;
+      el.textContent = met
+        ? `Price is already ${dir} this — will alert on the next crossing.`
+        : '';
+    }
+
+    function renderAlerts(alerts) {
+      $('count').textContent = `${alerts.length} total`;
+      $('list').innerHTML = alerts.map((a) => {
+        const waiting = a.state.armed ? 'watching' : 'triggered — waiting to re-arm';
+        return `<div class="alert">
+          <div>
+            <div><span class="dir ${a.direction}">${a.direction === 'above' ? '▲' : '▼'} ${fmt(a.target)}</span>
+              ${a.enabled ? '' : ' <span class="muted">off</span>'}</div>
+            <div class="muted">${a.repeat} · ${waiting}</div>
+          </div>
+          <div class="actions">
+            <button class="ghost" data-toggle="${a.id}" data-on="${a.enabled ? '1' : '0'}">${a.enabled ? 'On' : 'Off'}</button>
+            <button class="danger" data-del="${a.id}">Del</button>
+          </div>
+        </div>`;
+      }).join('') || '<p class="muted">No alerts</p>';
+    }
+
+    async function refresh() {
+      const [status, pack] = await Promise.all([api('/api/status'), api('/api/alerts')]);
+      paintStatus(status);
+      renderAlerts(pack.alerts);
+    }
+
+    $('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await api('/api/login', { method: 'POST', body: JSON.stringify({ password: $('password').value }) });
+        showApp();
+        await refresh();
+      } catch (err) {
+        showLogin(err.message);
+      }
+    });
+
+    $('target').addEventListener('input', updateAlready);
+    $('direction').addEventListener('change', updateAlready);
+
+    $('add').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('add-err').hidden = true;
+      try {
+        const body = {
+          direction: $('direction').value,
+          target: parseFloat($('target').value),
+          repeat: $('repeat').value,
+          hysteresis: parseFloat($('hysteresis').value),
+        };
+        await api('/api/alerts', { method: 'POST', body: JSON.stringify(body) });
+        $('target').value = '';
+        updateAlready();
+        await refresh();
+      } catch (err) {
+        $('add-err').hidden = false;
+        $('add-err').textContent = err.message;
+      }
+    });
+
+    $('list').addEventListener('click', async (e) => {
+      const del = e.target.closest('[data-del]');
+      const tog = e.target.closest('[data-toggle]');
+      try {
+        if (del) {
+          if (!confirm('Delete this alert?')) return;
+          await api('/api/alerts/' + del.dataset.del, { method: 'DELETE' });
+        } else if (tog) {
+          await api('/api/alerts/' + tog.dataset.toggle, {
+            method: 'PATCH',
+            body: JSON.stringify({ enabled: tog.dataset.on !== '1' }),
+          });
+        } else return;
+        await refresh();
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    $('test').addEventListener('click', async () => {
+      try {
+        const r = await api('/api/test-telegram', { method: 'POST' });
+        alert(r.ok ? 'Telegram sent' : 'Telegram failed — check server logs');
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    (async () => {
+      try {
+        await refresh();
+        showApp();
+        setInterval(() => refresh().catch(() => {}), 15000);
+      } catch (err) {
+        showLogin(err.status === 401 ? '' : err.message);
+      }
+    })();
+  </script>
+</body>
+</html>

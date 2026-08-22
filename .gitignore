@@ -11,3 +11,8 @@ npm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Runtime state
+alerts.json
+alert-state.json
+data/

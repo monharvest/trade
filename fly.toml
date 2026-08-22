@@ -19,6 +19,18 @@ primary_region = 'nrt'
   auto_start_machines = false
   min_machines_running = 1
 
+  [[http_service.checks]]
+    grace_period = '10s'
+    interval = '15s'
+    timeout = '2s'
+    method = 'GET'
+    path = '/health'
+
+# Volume must exist before deploy: fly volumes create trade_data --size 1 --region nrt --app trade-monitor
+[mounts]
+  source = 'trade_data'
+  destination = '/data'
+
 [[vm]]
   memory = '256mb'
   cpu_kind = 'shared'
