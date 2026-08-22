@@ -19,6 +19,12 @@ it does and [DEPLOY.md](DEPLOY.md) for the deploy runbook.
   Do not "simplify" priming away.
 - **The orderbook path uses the bid/ask midpoint**, which differs from last-traded by a few MNT.
   The thresholds are calibrated to it. Do not change it to last-price-only without asking.
+- **The socket is the only price source.** Trade.mn's public REST tickers are gone — every
+  documented path 404s (checked 2026-08-22). Do not re-add a "fallback" without verifying it
+  actually returns a price; the previous one had been dead for a long time and hid the fact that
+  a dropped socket meant evaluating a frozen price forever.
+- **A stale price must never be evaluated.** `usablePrice()` gates it. Removing that gate
+  reintroduces silent total failure: alerts stop firing while `/health` still reports ok.
 
 ## Before changing alert logic
 

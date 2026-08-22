@@ -9,10 +9,17 @@ const express = require('express');
 require('dotenv').config();
 
 const { createStore, newId, seedAlerts } = require('./lib/store');
-const { evaluateAll, formatTelegram, needsPrime, prime, isPastTarget } = require('./lib/evaluator');
+const { evaluateAll, formatTelegram, needsPrime, prime, isPastTarget, restore } = require('./lib/evaluator');
 
 const CHECK_INTERVAL = 20 * 60 * 1000;
 const EVAL_DEBOUNCE_MS = 10 * 1000;
+// The socket is the only price source — Trade.mn's public REST tickers are all
+// gone (every documented path 404s), so a stale price must be treated as no
+// price rather than quietly evaluated against.
+const PRICE_MAX_AGE_MS = Number(process.env.PRICE_MAX_AGE_MIN || 30) * 60 * 1000;
+const FEED_DOWN_MS = Number(process.env.FEED_DOWN_MIN || 45) * 60 * 1000;
+const HEARTBEAT_MS = Number(process.env.HEARTBEAT_HOURS || 24) * 60 * 60 * 1000;
+const HEARTBEAT_CHECK_MS = Math.min(30 * 60 * 1000, Math.max(60 * 1000, HEARTBEAT_MS));
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -36,6 +43,8 @@ let socket = null;
 let db = { version: 1, alerts: [] };
 let evalTimer = null;
 let primedOnce = false;
+let feedDownNotified = false;
+const startedAt = Date.now();
 
 const loginFails = new Map(); // ip -> { count, reset }; in-memory is fine for one machine
 
@@ -156,44 +165,68 @@ async function sendTelegramNotification(message) {
   }
 }
 
-async function scrapePriceFromWebsite() {
-  const endpoints = [
-    'https://trade.mn/api/v2/peatio/public/markets/usdtmnt/tickers',
-    'https://trade.mn/api/v2/markets/usdtmnt/ticker',
-    'https://trade.mn/api/markets/usdtmnt/ticker',
-  ];
-  for (const url of endpoints) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) continue;
-      const data = await response.json();
-      const price = data?.ticker?.last || data?.last || data?.price;
-      if (price) {
-        const priceNum = parseFloat(price);
-        log(`💰 Scraped price from API (${url}): ${priceNum} MNT`);
-        return priceNum;
-      }
-    } catch (error) {
-      log(`⚠️ Failed endpoint ${url}: ${error.message}`);
-    }
+// Age of the price we hold. Before the first tick, measured from boot.
+function priceAgeMs() {
+  return Date.now() - (lastPriceAt || startedAt);
+}
+
+function usablePrice() {
+  if (currentPrice == null) return null;
+  return priceAgeMs() <= PRICE_MAX_AGE_MS ? currentPrice : null;
+}
+
+function humanMinutes(ms) {
+  return Math.round(ms / 60000);
+}
+
+// The feed dying is the one failure that would silently stop every alert, so it
+// gets its own notification rather than only a log line.
+async function checkFeedHealth() {
+  const age = priceAgeMs();
+  if (age >= FEED_DOWN_MS && !feedDownNotified) {
+    feedDownNotified = true;
+    await sendTelegramNotification(
+      `⚠️ *Price feed is quiet*\n\nNo USDT/MNT price for *${humanMinutes(age)} minutes*. ` +
+        `Alerts cannot fire until it recovers.\n\nSocket connected: ${socket?.connected ? 'yes' : 'no'}`
+    );
+    log(`⚠️ Feed down notification sent (no price for ${humanMinutes(age)}m)`);
+  } else if (age < PRICE_MAX_AGE_MS && feedDownNotified) {
+    feedDownNotified = false;
+    await sendTelegramNotification(
+      `✅ *Price feed recovered*\n\nUSDT/MNT is *${Number(currentPrice).toLocaleString()} MNT*. Alerts are live again.`
+    );
+    log('✅ Feed recovery notification sent');
   }
-  log('❌ All API endpoints failed');
-  return null;
+}
+
+// Silence is not evidence that things are fine, so say so once a day.
+async function maybeHeartbeat() {
+  if (!db.meta) db.meta = {};
+  const last = db.meta.lastHeartbeatAt ? Date.parse(db.meta.lastHeartbeatAt) : 0;
+  if (Date.now() - last < HEARTBEAT_MS) return;
+
+  const armed = db.alerts.filter((a) => a.enabled && a.state.armed).length;
+  const stale = usablePrice() == null;
+  await sendTelegramNotification(
+    `💓 *Monitor heartbeat*\n\n` +
+      `💰 USDT/MNT: *${currentPrice != null ? Number(currentPrice).toLocaleString() : 'unknown'} MNT*` +
+      `${stale ? ' _(stale)_' : ''}\n` +
+      `🎯 ${armed} of ${db.alerts.length} alert(s) armed\n` +
+      `⏱️ Price age: ${humanMinutes(priceAgeMs())} min\n` +
+      `🔌 Socket: ${socket?.connected ? 'connected' : 'disconnected'}`
+  );
+  db.meta.lastHeartbeatAt = new Date().toISOString();
+  await persist();
+  log('💓 Heartbeat sent');
 }
 
 async function checkPriceAndAlert() {
-  let price = currentPrice;
-  if (!price) {
-    log('⚠️ No WebSocket price data, trying API scraping...');
-    price = await scrapePriceFromWebsite();
-    if (price) {
-      currentPrice = price;
-      lastPriceAt = Date.now();
-    }
-  }
-  if (!price) {
-    log('⚠️ No price data available from any source');
-    return { ok: false, fired: 0 };
+  await checkFeedHealth();
+
+  const price = usablePrice();
+  if (price == null) {
+    log(`⚠️ No usable price (age ${humanMinutes(priceAgeMs())}m) — skipping evaluation`);
+    return { ok: false, fired: 0, stale: true, priceAgeSeconds: Math.round(priceAgeMs() / 1000) };
   }
 
   if (!primedOnce) {
@@ -213,12 +246,25 @@ async function checkPriceAndAlert() {
 
   const { fires, changed } = evaluateAll(db.alerts, price);
   if (changed) await persist();
-  for (const alert of fires) {
-    await sendTelegramNotification(formatTelegram(alert, price));
-    log(`🔔 Alert ${alert.id} fired: ${alert.direction} ${alert.target}`);
+
+  let delivered = 0;
+  let reverted = false;
+  for (const { alert, before } of fires) {
+    if (await sendTelegramNotification(formatTelegram(alert, price))) {
+      delivered += 1;
+      log(`🔔 Alert ${alert.id} fired: ${alert.direction} ${alert.target}`);
+    } else {
+      // Undelivered is not fired. Put it back so the next pass retries instead
+      // of the alert being lost with the state already marked triggered.
+      restore(alert, before);
+      reverted = true;
+      log(`↩️ Alert ${alert.id} re-armed — Telegram failed, will retry`);
+    }
   }
+  if (reverted) await persist();
+
   if (!fires.length) log(`✅ Price checked ${price} MNT — no alert`);
-  return { ok: true, fired: fires.length, currentPrice: price };
+  return { ok: true, fired: delivered, retrying: fires.length - delivered, currentPrice: price };
 }
 
 function connectToTrade() {
@@ -366,6 +412,7 @@ app.get('/api/status', (_req, res) => {
     price: currentPrice,
     connected: socket?.connected || false,
     priceAgeSeconds: lastPriceAt ? Math.round((Date.now() - lastPriceAt) / 1000) : null,
+    priceUsable: usablePrice() != null,
     telegramConfigured: !!(TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID),
     alertCount: db.alerts.length,
   });
@@ -442,6 +489,7 @@ async function initialize() {
   const existing = await store.load();
   if (existing) {
     db = existing;
+    if (!db.meta) db.meta = {}; // files written before heartbeat tracking existed
     log(`📂 Loaded ${db.alerts.length} alert(s)`);
   } else {
     db = seedAlerts();
@@ -468,6 +516,9 @@ async function initialize() {
       connectToTrade();
     }
   }, 60000);
+  setInterval(() => {
+    maybeHeartbeat().catch((err) => log(`⚠️ heartbeat: ${err.message}`));
+  }, HEARTBEAT_CHECK_MS);
 }
 
 const server = app.listen(PORT, '0.0.0.0', () => {

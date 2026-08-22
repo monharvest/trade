@@ -9,11 +9,26 @@ Runs 24/7 on Fly.io, so alerts fire whether or not your Mac is awake.
 ## How it works
 
 1. Connects to the Trade.mn socket (`trade.mn:8989`) and tracks USDT/MNT continuously.
-   If the socket is down, it falls back to polling Trade.mn's REST tickers.
+   The socket is the **only** price source — Trade.mn's public REST tickers no longer exist.
 2. Evaluates every alert on each price tick (debounced to once per 10s), plus a full sweep
    every 20 minutes as a safety net.
 3. Sends a Telegram message when an alert **crosses** its threshold.
 4. Alerts live in `alerts.json` on a Fly volume at `/data`, so they survive redeploys.
+
+### When things go wrong
+
+Silence from this app is ambiguous — it looks identical whether the price is calm or the feed
+has died. Three things make failure visible:
+
+- **A stale price is treated as no price.** Past `PRICE_MAX_AGE_MIN` (default 30), evaluation is
+  skipped rather than run against a frozen number. `/api/status` exposes `priceUsable`.
+- **A quiet feed gets reported.** After `FEED_DOWN_MIN` (default 45) with no price you get one
+  Telegram, and another when it recovers. Once each, not repeatedly.
+- **A daily heartbeat** (`HEARTBEAT_HOURS`, default 24) reports price, armed alerts and socket
+  state, so silence becomes meaningful.
+
+If a Telegram send fails, the alert is **put back to armed** and retried on the next pass rather
+than being marked fired and lost.
 
 ### Alerts
 
