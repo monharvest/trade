@@ -11,3 +11,11 @@ npm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Runtime state (lives on the Fly volume at /data, never in the image)
+alerts.json
+alert-state.json
+data/
+
+# Docs
+BUILD_SPEC.md

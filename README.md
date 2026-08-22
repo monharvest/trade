@@ -1,108 +1,90 @@
-# Trade.mn Price Alert - Secure Setup
+# Trade.mn USDT/MNT Price Alerts
 
-This project monitors cryptocurrency prices on Trade.mn and sends Telegram notifications when price alerts are triggered.
+A small Node service that watches the USDT/MNT price on Trade.mn and sends a Telegram message
+when it crosses a threshold you choose. Alerts are edited from a password-protected web page —
+no code changes, no redeploys.
 
-## 🔐 Security Setup
+Runs 24/7 on Fly.io, so alerts fire whether or not your Mac is awake.
 
-Your Telegram bot token is now **securely stored on the backend server** and never exposed in the browser.
+## How it works
 
-## 📋 Setup Instructions
+1. Connects to the Trade.mn socket (`trade.mn:8989`) and tracks USDT/MNT continuously.
+   If the socket is down, it falls back to polling Trade.mn's REST tickers.
+2. Evaluates every alert on each price tick (debounced to once per 10s), plus a full sweep
+   every 20 minutes as a safety net.
+3. Sends a Telegram message when an alert **crosses** its threshold.
+4. Alerts live in `alerts.json` on a Fly volume at `/data`, so they survive redeploys.
 
-### Step 1: Install Dependencies
+### Alerts
+
+Each alert is a direction (`above`/`below`), a target price, and:
+
+- **repeat** — `always` (re-arms and keeps watching) or `once` (fires one time, then switches off).
+- **hysteresis** — how far the price must retrace before the alert can fire again. Default 5 MNT.
+  Stops a price hovering on the line from spamming you.
+
+**Alerts fire on a crossing, never on a condition that is already true.** Adding "above 3700"
+while the price is 3750 does not fire immediately — it waits for the price to come back down and
+cross up again. Same on restart: alerts are primed against the current price at boot, which is
+what stops a deploy from firing every satisfied alert at once.
+
+## The page
+
+Visit the app URL, enter the password (`ADMIN_PASSWORD`), and you get the live price plus
+add/toggle/delete for alerts. It's mobile-first — the point is to adjust an alert on your phone
+right after a Telegram lands. The session cookie lasts 30 days.
+
+## Local development
 
 ```bash
 npm install
+ADMIN_PASSWORD=whatever npm start
 ```
 
-### Step 2: Configure Telegram Bot
+Then open http://localhost:3000. Without `ADMIN_PASSWORD` the server refuses to start.
+Locally, `alerts.json` is written next to the source (and is gitignored); on Fly it goes to `/data`.
 
-1. **Get a new bot token** (the old one was compromised):
-   - Open Telegram and message [@BotFather](https://t.me/botfather)
-   - Send `/newbot` and follow the instructions
-   - Copy the bot token you receive
+`.env` holds the Telegram credentials:
 
-2. **Get your Chat ID**:
-   - Message [@userinfobot](https://t.me/userinfobot) on Telegram
-   - It will reply with your chat ID
+```
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+```
 
-3. **Update the `.env` file**:
-   ```bash
-   TELEGRAM_BOT_TOKEN=your_new_bot_token_here
-   TELEGRAM_CHAT_ID=your_chat_id_here
-   PORT=3000
-   ```
-
-### Step 3: Start the Backend Server
+Run the alert-logic self-checks with:
 
 ```bash
-npm start
+node lib/evaluator.js
 ```
 
-The server will run on `http://localhost:3000`
+## API
 
-### Step 4: Open the Web Interface
+Auth is a session cookie from `POST /api/login`, or `Authorization: Bearer $ADMIN_PASSWORD`
+for scripts. `/health` is deliberately open — Fly's health checks use it.
 
-Open `index.html` in your browser. The page will connect to your local backend server for notifications.
-
-## 🚀 How It Works
-
-1. **Frontend** (index.html): Monitors prices and displays alerts
-2. **Backend** (server.js): Securely sends Telegram notifications
-3. **Your token stays safe** on the server, never exposed to users
-
-## 📁 File Structure
-
-```
-trade/
-├── index.html           # Frontend web interface
-├── server.js           # Backend API server (handles Telegram)
-├── package.json        # Node.js dependencies
-├── .env               # Secret configuration (NOT committed to Git)
-├── .gitignore         # Prevents .env from being committed
-└── README.md          # This file
-```
-
-## ⚠️ Important Security Notes
-
-1. **Never commit `.env` file** to Git (already in `.gitignore`)
-2. **Revoke the old compromised token** via @BotFather
-3. **Use a new token** in the `.env` file
-4. When deploying to production:
-   - Use environment variables on your hosting platform
-   - Update `BACKEND_API_URL` in index.html to your production server URL
-
-## 🔧 Development
-
-For development with auto-restart on file changes:
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/health` | Liveness. No auth. |
+| `POST` | `/api/login` | `{password}` → sets the session cookie |
+| `GET` | `/api/status` | Price, socket state, price age |
+| `GET` | `/api/alerts` | List alerts |
+| `POST` | `/api/alerts` | `{direction, target, repeat?, hysteresis?}` |
+| `PATCH` | `/api/alerts/:id` | Partial update; changing target/direction re-primes |
+| `DELETE` | `/api/alerts/:id` | Remove one |
+| `POST` | `/api/test-telegram` | Send a test message |
+| `POST` | `/api/check` | Force an evaluation now |
 
 ```bash
-npm run dev
+curl -H "Authorization: Bearer $ADMIN_PASSWORD" https://trade-monitor.fly.dev/api/alerts
 ```
 
-## 🌐 Deployment
+## Layout
 
-When deploying to production (e.g., Heroku, Railway, Vercel):
+```
+monitor-server.js   price feed, HTTP routes, wiring
+lib/store.js        alerts.json load/save (atomic, serialized)
+lib/evaluator.js    per-alert trigger logic + self-checks
+public/index.html   the whole UI, one file
+```
 
-1. Set environment variables on your hosting platform:
-   - `TELEGRAM_BOT_TOKEN`
-   - `TELEGRAM_CHAT_ID`
-   
-2. Update `BACKEND_API_URL` in index.html to your production server URL
-
-3. Deploy both the backend server and frontend
-
-## 🐛 Troubleshooting
-
-**"Backend server not running" error:**
-- Make sure you ran `npm start` in the terminal
-- Check that the server is running on port 3000
-- Verify the backend URL in index.html matches your server
-
-**No Telegram notifications:**
-- Check your `.env` file has the correct bot token and chat ID
-- Make sure you started a chat with your bot on Telegram
-- Check the server console for error messages
-
-## 📝 License
-
-ISC
+Deployment lives in [DEPLOY.md](DEPLOY.md).

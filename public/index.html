@@ -204,6 +204,14 @@
       updateAlready();
     }
 
+    function paintOffline(msg) {
+      $('price').textContent = '—';
+      const dot = $('dot');
+      dot.className = 'dot bad';
+      $('conn').textContent = 'offline';
+      $('updated').textContent = msg || 'Cannot reach the server';
+    }
+
     function updateAlready() {
       const el = $('already');
       const target = parseFloat($('target').value);
@@ -302,11 +310,19 @@
       }
     });
 
+    function onRefreshError(err) {
+      if (err && err.status === 401) {
+        showLogin('Session expired — log in again.');
+        return;
+      }
+      paintOffline(err && err.message ? `Cannot reach the server (${err.message})` : null);
+    }
+
     (async () => {
       try {
         await refresh();
         showApp();
-        setInterval(() => refresh().catch(() => {}), 15000);
+        setInterval(() => refresh().catch(onRefreshError), 15000);
       } catch (err) {
         showLogin(err.status === 401 ? '' : err.message);
       }

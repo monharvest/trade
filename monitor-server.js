@@ -22,7 +22,7 @@ const SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const COOKIE = 'sid';
 
 const DATA_DIR = process.env.DATA_DIR || (fs.existsSync('/data') ? '/data' : __dirname);
-const store = createStore(path.join(DATA_DIR, 'alerts.json'));
+const store = createStore(path.join(DATA_DIR, 'alerts.json'), log);
 
 if (!ADMIN_PASSWORD) {
   console.error('ADMIN_PASSWORD is unset — refusing to start');
@@ -37,7 +37,7 @@ let db = { version: 1, alerts: [] };
 let evalTimer = null;
 let primedOnce = false;
 
-const loginFails = new Map(); // ponytail: in-memory; per-account if abuse appears
+const loginFails = new Map(); // ip -> { count, reset }; in-memory is fine for one machine
 
 function log(message) {
   console.log(`[${new Date().toISOString()}] ${message}`);
@@ -320,7 +320,7 @@ function findAlert(id) {
 }
 
 const app = express();
-app.set('trust proxy', true);
+app.set('trust proxy', 1); // one hop: Fly's proxy. 'true' would trust a client-supplied XFF.
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -447,6 +447,12 @@ async function initialize() {
     db = seedAlerts();
     await persist();
     log(`🌱 Seeded alerts: ${db.alerts.map((a) => `${a.direction} ${a.target}`).join(', ')}`);
+    if (store.wasQuarantined()) {
+      await sendTelegramNotification(
+        '⚠️ *Monitor recovered*\n\nThe saved alert list was unreadable and has been reset to defaults. ' +
+          'The damaged file was kept next to it on the volume. Check the alert page.'
+      );
+    }
   }
 
   connectToTrade();

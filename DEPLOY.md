@@ -1,56 +1,73 @@
-# Trade.mn 24/7 Price Monitor
+# Deploying to Fly.io
 
-Deploy this to a free hosting service for 24/7 monitoring without keeping your computer on.
+App: `trade-monitor`, region `nrt` (Tokyo), one 256MB machine, always on.
 
-## Quick Deploy Options
+## First-time setup
 
-### Option 1: Render.com (Recommended - Free Forever)
-1. Go to [render.com](https://render.com)
-2. Sign up with GitHub
-3. Click **New** → **Background Worker**
-4. Connect your `monharvest/trade` repo
-5. Settings:
-   - **Name**: `trade-monitor`
-   - **Start Command**: `node monitor-server.js`
-   - **Plan**: Free
-6. Add environment variable:
-   - `WORKER_URL` = `https://trade-telegram-bot.monharvest.workers.dev`
-7. Click **Create**
-
-### Option 2: Railway.app (Free Trial)
-1. Go to [railway.app](https://railway.app)
-2. Sign up with GitHub
-3. Click **New Project** → **Deploy from GitHub repo**
-4. Select `monharvest/trade`
-5. Add environment variable:
-   - `WORKER_URL` = `https://trade-telegram-bot.monharvest.workers.dev`
-6. Railway will auto-detect Node.js and run `monitor-server.js`
-
-### Option 3: Fly.io (Free Tier)
-1. Install flyctl: `brew install flyctl`
-2. Run: `flyctl auth signup`
-3. In this folder, run: `flyctl launch`
-4. Set env: `flyctl secrets set WORKER_URL=https://trade-telegram-bot.monharvest.workers.dev`
-
-## How It Works
-
-1. **Node.js server** connects to Trade.mn WebSocket 24/7
-2. Tracks USDT/MNT price in real-time
-3. Every **20 minutes**, sends current price to Cloudflare Worker
-4. Worker checks thresholds (3630 / 3660)
-5. If crossed → **Telegram alert** 🔔
-
-## Local Testing
+These must exist **before** the first deploy of the alert-manager version, or the machine will
+crash-loop: no `ADMIN_PASSWORD` means the server exits on purpose, and no volume means the
+`[mounts]` block in `fly.toml` fails the deploy.
 
 ```bash
-npm install socket.io-client
-node monitor-server.js
+fly volumes create trade_data --size 1 --region nrt --app trade-monitor
 ```
 
-## Monitor Status
+```bash
+fly secrets set ADMIN_PASSWORD="$(openssl rand -base64 18)" --app trade-monitor
+```
 
-Once deployed, check logs in your hosting dashboard to see:
-- ✅ Connected to Trade.mn
-- 💰 Price updates
-- 📤 Sending to worker
-- 🔔 Alerts triggered
+Telegram credentials, if not already set:
+
+```bash
+fly secrets set TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=... --app trade-monitor
+```
+
+Setting a secret restarts the machine, so do it before verifying, not during.
+
+## Deploy
+
+```bash
+fly deploy
+```
+
+## Verify
+
+```bash
+fly logs --app trade-monitor
+```
+
+Expect `📂 Loaded N alert(s)` (or `🌱 Seeded alerts:` on the very first run), then
+`✅ Connected to Trade.mn`. A `🧭 Primed N alert(s)` line is normal and means no Telegram was
+sent for already-satisfied alerts.
+
+```bash
+curl https://trade-monitor.fly.dev/health
+curl -H "Authorization: Bearer $ADMIN_PASSWORD" https://trade-monitor.fly.dev/api/alerts
+```
+
+Then open the app URL in a browser and press **Test Telegram**.
+
+## Constraints
+
+- **One machine only.** The volume binds to a single machine; a second one would get its own
+  empty volume and duplicate every Telegram. Keep `min_machines_running = 1` and do not scale up.
+- **`/health` must stay unauthenticated** — Fly's health checks call it.
+- Alerts live at `/data/alerts.json` on the volume. Redeploys do not touch it.
+
+## Rollback
+
+```bash
+fly releases --app trade-monitor
+fly deploy --image <previous-image>
+```
+
+The volume survives rollbacks, and older code ignores `/data`, so rolling back is safe.
+
+## Recovery
+
+If `alerts.json` is ever unreadable, the server sets it aside as `alerts.json.corrupt-<timestamp>`,
+reseeds the default alerts, and sends a Telegram saying so. To inspect the damaged file:
+
+```bash
+fly ssh console --app trade-monitor -C "ls -la /data"
+```
