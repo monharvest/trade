@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#111111">
   <title>USDT/MNT alerts</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" href="/icon-192.png">
+  <!-- iOS ignores the manifest for home-screen installs; these drive it instead. -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="MNT Alerts">
   <style>
     :root {
       color-scheme: dark;
@@ -24,7 +32,15 @@
       background: var(--bg);
       color: var(--fg);
     }
-    main { max-width: 28rem; margin: 0 auto; padding: 16px 16px 48px; }
+    main {
+      max-width: 28rem;
+      margin: 0 auto;
+      padding:
+        calc(16px + env(safe-area-inset-top))
+        calc(16px + env(safe-area-inset-right))
+        calc(48px + env(safe-area-inset-bottom))
+        calc(16px + env(safe-area-inset-left));
+    }
     h1 { font-size: 1.1rem; font-weight: 650; margin: 0; }
     .muted { color: var(--muted); }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
