@@ -224,10 +224,23 @@
         : '';
     }
 
+    let lastRender = '';
+
     function renderAlerts(alerts) {
+      // Re-rendering on every poll rebuilds the buttons and can steal a tap
+      // that lands as the 15s refresh arrives. Only repaint on real changes.
+      const fingerprint = JSON.stringify(alerts);
+      if (fingerprint === lastRender) return;
+      lastRender = fingerprint;
+
       $('count').textContent = `${alerts.length} total`;
       $('list').innerHTML = alerts.map((a) => {
-        const waiting = a.state.armed ? 'watching' : 'triggered — waiting to re-arm';
+        const fired = (a.state.triggerCount || 0) > 0;
+        const waiting = a.state.armed
+          ? 'watching'
+          : fired
+            ? 'triggered — waiting to re-arm'
+            : 'waiting for a crossing';
         return `<div class="alert">
           <div>
             <div><span class="dir ${a.direction}">${a.direction === 'above' ? '▲' : '▼'} ${fmt(a.target)}</span>
