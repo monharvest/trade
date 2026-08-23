@@ -77,3 +77,9 @@ Never paste secret values into chat, commits, or files. Set them via stdin:
 ```bash
 fly secrets import --app trade-monitor   # then type KEY=value, EOF
 ```
+
+## Local
+
+- Desktop / `~/Applications` shortcut: **USDT-MNT Alerts**
+- Port **3456** (Dashboard owns **3000**)
+- `ADMIN_PASSWORD` in `.env` (gitignored). Never store it in memory notes.
