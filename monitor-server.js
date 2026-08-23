@@ -151,6 +151,9 @@ async function sendTelegramNotification(message) {
         chat_id: TELEGRAM_CHAT_ID,
         text: message,
         parse_mode: 'Markdown',
+        // The Trade.mn link would otherwise render a preview card that buries
+        // the numbers. The link stays tappable.
+        disable_web_page_preview: true,
       }),
     });
     if (response.ok) {
@@ -471,7 +474,9 @@ app.delete('/api/alerts/:id', async (req, res) => {
 
 app.post('/api/test-telegram', async (_req, res) => {
   const ok = await sendTelegramNotification(
-    `🔔 Test from Trade.mn monitor\n\n💰 Current Price: *${currentPrice != null ? currentPrice.toLocaleString() : 'n/a'} MNT*`
+    `🔔 *Test from Trade.mn monitor*\n\n` +
+      `💰 Current Price: *${currentPrice != null ? currentPrice.toLocaleString() : 'n/a'} MNT*\n\n` +
+      `[Open Trade.mn →](https://trade.mn/exchange/USDT/MNT/)`
   );
   res.json({ ok });
 });
